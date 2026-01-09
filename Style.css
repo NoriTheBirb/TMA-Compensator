@@ -51,6 +51,19 @@ h1 {
     letter-spacing: 2px;
 }
 
+/* Balance color states */
+.balance-value.positive {
+    color: #51cf66; /* green when over TMA (positive) */
+}
+
+.balance-value.negative {
+    color: #ff6b6b; /* red when under TMA (negative) */
+}
+
+.balance-value.zero {
+    color: white; /* neutral */
+}
+
 .options-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -180,7 +193,47 @@ h1 {
     box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
 }
 
-/* Modal */
+.btn-reset {
+    margin-left: 12px;
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.2);
+    color: rgba(255,255,255,0.95);
+    padding: 8px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 700;
+    transition: all 0.18s ease;
+}
+
+.time-balance .btn-reset:hover {
+    background: rgba(255,255,255,0.06);
+    transform: translateY(-2px);
+}
+
+.balance-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-top: 15px;
+}
+
+.btn-end-day {
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.3);
+    color: rgba(255,255,255,0.95);
+    padding: 8px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 0.9em;
+    transition: all 0.18s ease;
+}
+
+.time-balance .btn-end-day:hover {
+    background: rgba(255,255,255,0.25);
+    transform: translateY(-2px);
+}
+
 .modal {
     display: none;
     position: fixed;
@@ -321,7 +374,6 @@ h1 {
     box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
 }
 
-/* History */
 .history {
     background: white;
     border-radius: 12px;
