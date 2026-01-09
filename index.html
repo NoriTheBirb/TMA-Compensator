@@ -3,10 +3,90 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+    <link rel="stylesheet" href="Style.css">
+    <title>TMA Compensator</title>
 </head>
 <body>
-    <h1>hello word</h1>
-    
+    <div class="container">
+        <h1>TMA Compensator</h1>
+        
+        <div class="time-balance">
+            <div class="balance-display">
+                <span class="balance-label">Time Bank Balance</span>
+                <span class="balance-value" id="balance">00:00:00</span>
+            </div>
+        </div>
+        
+        <div class="list-section">
+            <div class="list-header">
+                <h2>Compensation Types</h2>
+            </div>
+            
+            <ul class="list">
+                <li class="list-item">
+                    <div class="item-content">
+                        <h3>Simples</h3>
+                        <p>Simple company analysis</p>
+                    </div>
+                    <div class="item-actions">
+                        <button class="btn-action" data-item="Simples" data-type="conferencia" data-tma="1800">📋 Conferencia</button>
+                        <button class="btn-action" data-item="Simples" data-type="retorno" data-tma="600">🔄 Retorno</button>
+                    </div>
+                </li>
+                
+                <li class="list-item">
+                    <div class="item-content">
+                        <h3>Complexa</h3>
+                        <p>Complex company analysis</p>
+                    </div>
+                    <div class="item-actions">
+                        <button class="btn-action" data-item="Complexa" data-type="conferencia" data-tma="3600">📋 Conferencia</button>
+                        <button class="btn-action" data-item="Complexa" data-type="retorno" data-tma="900">🔄 Retorno</button>
+                    </div>
+                </li>
+                
+                <li class="list-item">
+                    <div class="item-content">
+                        <h3>Empresário Individual</h3>
+                        <p>Individual entrepreneur analysis</p>
+                    </div>
+                    <div class="item-actions">
+                        <button class="btn-action" data-item="Empresário Individual" data-type="conferencia" data-tma="1200">📋 Conferencia</button>
+                        <button class="btn-action" data-item="Empresário Individual" data-type="retorno" data-tma="450">🔄 Retorno</button>
+                    </div>
+                </li>
+            </ul>
+        </div>
+        
+
+        <div class="modal" id="timeModal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 id="modalTitle">Conferencia</h2>
+                    <button class="close-modal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <label>Time spent (HH:MM:SS)</label>
+                    <input type="text" id="timeInput" placeholder="00:30:00" class="time-input">
+                    <div class="info-text" id="infoText">TMA: 30 min</div>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn-cancel">Cancel</button>
+                    <button class="btn-confirm">Confirm</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="history" id="history">
+
+        </div>
+    </div>
+    <script src="Script.js"></script>
+                    </div>
+                </li>
+            </ul>
+        </div>
+    </div>
+    <script src="Script.js"></script>
 </body>
 </html>
