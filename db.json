@@ -1,0 +1,26 @@
+{
+  "exportDate": "2026-01-11T05:58:27.172Z",
+  "finalBalance": 388,
+  "finalBalanceFormatted": "00:06:28",
+  "transactionCount": 2,
+  "transactions": [
+    {
+      "item": "Sociedade Simples",
+      "type": "retorno",
+      "tma": 900,
+      "timeSpent": 2700,
+      "difference": 1800,
+      "creditedMinutes": 30,
+      "timestamp": "11/01/2026, 02:58:25"
+    },
+    {
+      "item": "Sociedade Simples",
+      "type": "conferencia",
+      "tma": 2132,
+      "timeSpent": 720,
+      "difference": -1412,
+      "creditedMinutes": 24,
+      "timestamp": "11/01/2026, 02:58:22"
+    }
+  ]
+}

@@ -53,11 +53,11 @@ h1 {
 
 /* Balance color states */
 .balance-value.positive {
-    color: #ff6b6b; /* green when over TMA (positive) */
+    color: #51cf66; /* green when over TMA (positive) */
 }
 
 .balance-value.negative {
-    color: #51cf66; /* red when under TMA (negative) */
+    color: #ff6b6b; /* red when under TMA (negative) */
 }
 
 .balance-value.zero {
@@ -416,11 +416,11 @@ h1 {
 }
 
 .history-time.positive {
-    color: #ff6b6b;
+    color: #51cf66;
 }
 
 .history-time.negative {
-    color: #51cf66;
+    color: #ff6b6b;
 }
 
 @media (max-width: 600px) {
