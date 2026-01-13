@@ -10,71 +10,164 @@
     <div class="container">
         <h1>TMA Compensator</h1>
         
-        <div class="time-balance">
-            <div class="balance-display">
-                <span class="balance-label">Saldo de Tempo</span>
-                <span class="balance-value" id="balance">00:00:00</span>
+        <div class="top-row">
+            <div class="time-row">
+                <div class="time-balance">
+                    <div class="balance-display">
+                        <span class="balance-label">Saldo de Tempo</span>
+                        <span class="balance-value" id="balance">00:00:00</span>
+                    </div>
+                    <div class="balance-actions">
+                        <button id="resetBtn" class="btn-reset">Resetar</button>
+                        <button id="endDayBtn" class="btn-end-day">Finalizar Dia</button>
+                    </div>
+                </div>
+                
+                <div class="current-time">
+                    <div class="time-display">
+                        <span class="time-label">Turno Atual</span>
+                        <span class="time-value" id="currentTime">00:00:00</span>
+                        <div class="turno-details" aria-label="Detalhes do turno">
+                            <div class="turno-line"><span class="turno-k">Agora</span><span class="turno-v" id="turnoNow">--:--</span></div>
+                            <div class="turno-line"><span class="turno-k">Fim</span><span class="turno-v" id="turnoEnd">17:48</span></div>
+                            <div class="turno-line"><span class="turno-k">Trabalho restante</span><span class="turno-v" id="turnoWorkLeft">--</span></div>
+                            <div class="turno-line"><span class="turno-k">Status</span><span class="turno-v" id="turnoStatus">--</span></div>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="balance-actions">
-                <button id="resetBtn" class="btn-reset">Resetar</button>
-                <button id="endDayBtn" class="btn-end-day">Finalizar Dia</button>
+            
+            <div class="switch-container">
+                <label class="switch">
+                    <input type="checkbox" id="timeToggle">
+                    <span class="slider"></span>
+                </label>
+                <span class="switch-label">Flow Mode</span>
+            </div>
+
+            <div class="assistant-section">
+                <div class="account-assistant">
+                    <div class="assistant-display">
+                        <span class="assistant-label">Assistente de contas</span>
+                        <div id="assistantBody" class="assistant-body"></div>
+                    </div>
+                </div>
             </div>
         </div>
         
-        <div class="list-section">
-            <div class="list-header">
+        <div class="accounts-counter" id="accountsCounter">
+            Contas feitas: <span id="accountsCount">0</span>
+        </div>
+        
+        <div class="debug-panel" id="debugPanel" style="display: none; margin: 20px 0; padding: 10px; background: #f0f0f0; border-radius: 8px; font-size: 0.9em;">
+            <h3>Debug Tool</h3>
+            <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                <div>
+                    <label>Set Current Time (HH:MM:SS): </label>
+                    <input type="text" id="debugTimeInput" placeholder="08:00:00">
+                    <button id="setDebugTimeBtn">Set Time</button>
+                    <button id="resetDebugTimeBtn">Reset to Real Time</button>
+
+                    <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(0,0,0,0.1);">
+                        <strong>Shift Simulator:</strong>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:8px;">
+                            <label style="display:flex; gap:6px; align-items:center;">
+                                Speed
+                                <select id="simSpeed" style="padding:6px 8px;">
+                                    <option value="1">1x</option>
+                                    <option value="10">10x</option>
+                                    <option value="60" selected>60x</option>
+                                    <option value="300">300x</option>
+                                    <option value="600">600x</option>
+                                </select>
+                            </label>
+                            <button id="simStartBtn">Start/Resume</button>
+                            <button id="simPauseBtn">Pause</button>
+                            <button id="simResetBtn">Stop & Reset</button>
+                            <span id="simStatus" style="font-weight:600;">Stopped</span>
+                        </div>
+                        <div style="margin-top:6px; font-size:0.85em; color:#555;">
+                            Simulates time from 08:00 to 17:48 (lunch respected).
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <strong>Info:</strong><br>
+                    Real Time: <span id="realTimeDisplay">00:00:00</span><br>
+                    Debug Time: <span id="debugTimeDisplay">Not set</span><br>
+                    Shift: 08:00 - 17:48<br>
+                    Lunch: <span id="lunchDisplay">Not set</span><br>
+                    Balance: <span id="debugBalanceDisplay">0</span><br>
+                    Lunch Mode: <span id="lunchModeDisplay">No</span>
+                </div>
+            </div>
+            <div style="margin-top: 16px; display: flex; align-items: center; gap: 8px;">
+                <label class="switch" style="margin-bottom:0;">
+                    <input type="checkbox" id="toggleLunchStyle" checked>
+                    <span class="slider"></span>
+                </label>
+                <span style="font-weight:600;">Ativar estilo relaxante do almoço</span>
+            </div>
+        </div>
+        
+        <div class="control-section">
+            <div class="control-header">
                 <h2>Tipos de Conta</h2>
             </div>
             
-            <ul class="list">
-                <li class="list-item">
-                    <div class="item-content">
+            <div class="control-grid">
+                <div class="control-box">
+                    <div class="box-content">
                         <h3>Sociedade Simples</h3>
+                        <div class="timer-display">00:00:00</div>
                         <p>Conferencia: 00:35:32</p>
                         <p>Retorno: 00:15:00</p>
                     </div>
-                    <div class="item-actions">
+                    <div class="box-actions">
                         <button class="btn-action" data-item="Sociedade Simples" data-type="conferencia" data-tma="2132">📋 Conferencia</button>
                         <button class="btn-action" data-item="Sociedade Simples" data-type="retorno" data-tma="900">🔄 Retorno</button>
                     </div>
-                </li>
+                </div>
                 
-                <li class="list-item">
-                    <div class="item-content">
+                <div class="control-box">
+                    <div class="box-content">
                         <h3>Complexa</h3>
+                        <div class="timer-display">00:00:00</div>
                         <p>Conferencia: 01:21:00</p>
                         <p>Retorno: 00:45:00</p>
                     </div>
-                    <div class="item-actions">
+                    <div class="box-actions">
                         <button class="btn-action" data-item="Complexa" data-type="conferencia" data-tma="4860">📋 Conferencia</button>
                         <button class="btn-action" data-item="Complexa" data-type="retorno" data-tma="2700">🔄 Retorno</button>
                     </div>
-                </li>
+                </div>
                 
-                 <li class="list-item">
-                    <div class="item-content">
+                <div class="control-box">
+                    <div class="box-content">
                         <h3>Empresaria Limitada</h3>
+                        <div class="timer-display">00:00:00</div>
                         <p>Conferencia: 00:50:32</p>
                         <p>Retorno: 00:24:00</p>
                     </div>
-                    <div class="item-actions">
+                    <div class="box-actions">
                         <button class="btn-action" data-item="Empresaria Limitada" data-type="conferencia" data-tma="3032">📋 Conferencia</button>
                         <button class="btn-action" data-item="Empresaria Limitada" data-type="retorno" data-tma="1440">🔄 Retorno</button>
                     </div>
-                </li>
+                </div>
 
-                <li class="list-item">
-                    <div class="item-content">
-                        <h3>Empresário Individual</h3>
-                        <p>Conferencia: 00:00:00</p>
-                        <p>Retorno: 00:00:00</p>
+                <div class="control-box">
+                    <div class="box-content">
+                        <h3>Micro Empresario Individual</h3>
+                        <div class="timer-display">00:00:00</div>
+                        <p>Conferencia: 00:33:00</p>
+                        <p>Retorno: 00:15:00</p>
                     </div>
-                    <div class="item-actions">
-                        <button class="btn-action" data-item="Empresário Individual" data-type="conferencia" data-tma="1200">📋 Conferencia</button>
-                        <button class="btn-action" data-item="Empresário Individual" data-type="retorno" data-tma="450">🔄 Retorno</button>
+                    <div class="box-actions">
+                        <button class="btn-action" data-item="Micro Empresario Individual" data-type="conferencia" data-tma="1980">📋 Conferencia</button>
+                        <button class="btn-action" data-item="Micro Empresario Individual" data-type="retorno" data-tma="900">🔄 Retorno</button>
                     </div>
-                </li>
-            </ul>
+                </div>
+            </div>
         </div>
         
 
@@ -85,25 +178,36 @@
                     <button class="close-modal">&times;</button>
                 </div>
                 <div class="modal-body">
-                    <label>Time spent (HH:MM:SS)</label>
+                    <label>Tempo gasto (HH:MM:SS)</label>
                     <input type="text" id="timeInput" placeholder="00:30:00" class="time-input">
                     <div class="info-text" id="infoText">TMA: 30 min</div>
                 </div>
                 <div class="modal-actions">
-                    <button class="btn-cancel">Cancel</button>
-                    <button class="btn-confirm">Confirm</button>
+                    <button class="btn-cancel">Cancelar</button>
+                    <button class="btn-confirm">Confirmar</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal" id="lunchModal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Configurar Horário de Almoço</h2>
+                    <button class="close-lunch-modal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <label>Digite o horário de início do almoço (HH:MM)</label>
+                    <input type="text" id="lunchInput" placeholder="12:00" class="time-input">
+                    <div class="info-text">O almoço dura 1 hora e não conta para as horas de trabalho.</div>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn-lunch-confirm">Confirm</button>
                 </div>
             </div>
         </div>
         
         <div class="history" id="history">
 
-        </div>
-    </div>
-    <script src="Script.js"></script>
-                    </div>
-                </li>
-            </ul>
         </div>
     </div>
     <script src="Script.js"></script>
