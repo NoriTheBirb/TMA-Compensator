@@ -1471,11 +1471,31 @@ if (resetDebugTimeBtn) resetDebugTimeBtn.addEventListener('click', () => {
     updateCurrentTime();
 });
 
-// Toggle debug panel with Ctrl+D
+function isTypingTarget(target) {
+    const el = target;
+    if (!el) return false;
+    const tag = String(el.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
+    if (el.isContentEditable) return true;
+    return false;
+}
+
+// Toggle debug panel with a browser-safe hotkey.
+// - F2: reliable across browsers (doesn't collide with common shortcuts)
+// - Ctrl+Alt+D: fallback
 document.addEventListener('keydown', (e) => {
-    if (e.ctrlKey && e.key === 'd') {
+    if (!debugPanel) return;
+    if (isTypingTarget(e.target)) return;
+
+    const key = String(e.key || '');
+    const isF2 = key === 'F2';
+    const isCtrlAltD = e.ctrlKey && e.altKey && key.toLowerCase() === 'd';
+
+    if (isF2 || isCtrlAltD) {
         e.preventDefault();
         debugPanel.style.display = debugPanel.style.display === 'none' ? 'block' : 'none';
+        ensureAnalytics();
+        logEvent('debug_panel_toggle_hotkey', { hotkey: isF2 ? 'F2' : 'Ctrl+Alt+D' });
     }
 });
 
