@@ -90,6 +90,24 @@
                             Simulates time from 08:00 to 17:48 (lunch respected).
                         </div>
                     </div>
+
+                    <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(0,0,0,0.1);">
+                        <strong>Preferências:</strong>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:8px;">
+                            <label style="display:flex; gap:8px; align-items:center; font-weight:600;">
+                                <input type="checkbox" id="complexaToggleDebug" />
+                                Eu faço contas <strong>Complexas</strong>
+                            </label>
+                        </div>
+
+                        <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                            <button id="debugOpenLunchPromptBtn">Abrir prompt do almoço</button>
+                            <button id="debugResetPromptsBtn">Resetar prompts (1º uso)</button>
+                        </div>
+                        <div style="margin-top:6px; font-size:0.85em; color:#555;">
+                            Use isso para reconfigurar o almoço e refazer as perguntas iniciais.
+                        </div>
+                    </div>
                 </div>
                 <div>
                     <strong>Info:</strong><br>
@@ -129,7 +147,7 @@
                     </div>
                 </div>
                 
-                <div class="control-box">
+                <div class="control-box" data-account="Complexa">
                     <div class="box-content">
                         <h3>Complexa</h3>
                         <div class="timer-display">00:00:00</div>
@@ -199,6 +217,11 @@
                     <label>Digite o horário de início do almoço (HH:MM)</label>
                     <input type="text" id="lunchInput" placeholder="12:00" class="time-input">
                     <div class="info-text">O almoço dura 1 hora e não conta para as horas de trabalho.</div>
+
+                    <label style="margin-top: 14px; display:flex; gap:10px; align-items:center; justify-content:flex-start; font-weight:700; color:#2c3e50;">
+                        <input type="checkbox" id="complexaToggle">
+                        <span>Eu faço contas <strong>Complexas</strong></span>
+                    </label>
                 </div>
                 <div class="modal-actions">
                     <button class="btn-lunch-confirm">Confirm</button>

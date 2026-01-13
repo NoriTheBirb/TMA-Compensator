@@ -5,6 +5,7 @@ let transactions = [];
 const STORAGE_BAL = 'tma_comp_balance_v1';
 const STORAGE_TX = 'tma_comp_transactions_v1';
 const STORAGE_LUNCH = 'tma_comp_lunch_v1';
+const STORAGE_COMPLEXA = 'tma_comp_show_complexa_v1';
 const STORAGE_ANALYTICS = 'tma_comp_analytics_v1';
 
 const ANALYTICS_SCHEMA_VERSION = 1;
@@ -45,6 +46,10 @@ const lunchDisplay = document.getElementById('lunchDisplay');
 const debugBalanceDisplay = document.getElementById('debugBalanceDisplay');
 const lunchModeDisplay = document.getElementById('lunchModeDisplay');
 const toggleLunchStyle = document.getElementById('toggleLunchStyle');
+const complexaToggle = document.getElementById('complexaToggle');
+const complexaToggleDebug = document.getElementById('complexaToggleDebug');
+const debugOpenLunchPromptBtn = document.getElementById('debugOpenLunchPromptBtn');
+const debugResetPromptsBtn = document.getElementById('debugResetPromptsBtn');
 const accountsCount = document.getElementById('accountsCount');
 const assistantBody = document.getElementById('assistantBody');
 
@@ -80,6 +85,8 @@ let currentItem = '';
 
 let lunchStart = null;
 let lunchEnd = null;
+
+let showComplexa = false;
 
 let debugTime = null; // for testing, seconds since midnight
 let lunchStyleEnabled = true;
@@ -463,7 +470,55 @@ function getActionCatalog() {
             label,
         };
     }).filter(a => a.item && a.type);
+
+    if (!showComplexa) {
+        cachedActionCatalog = cachedActionCatalog.filter(a => a.item !== 'Complexa');
+    }
     return cachedActionCatalog;
+}
+
+function applyComplexaVisibility() {
+    const complexCards = document.querySelectorAll('.control-box[data-account="Complexa"]');
+    complexCards.forEach(el => {
+        el.classList.toggle('is-hidden', !showComplexa);
+    });
+
+    // If hiding while a complex timer is running, block by reverting state
+    const activeKey = getActiveTimerKey();
+    if (!showComplexa && activeKey && activeKey.startsWith('Complexa-')) {
+        showComplexa = true;
+        localStorage.setItem(STORAGE_COMPLEXA, '1');
+        complexCards.forEach(el => el.classList.remove('is-hidden'));
+        if (complexaToggle) complexaToggle.checked = true;
+        if (complexaToggleDebug) complexaToggleDebug.checked = true;
+        alert('Pare o timer da Complexa antes de esconder essa opção.');
+        return;
+    }
+
+    // Reset cached catalog so assistant recommendations update
+    cachedActionCatalog = null;
+    updateAssistant();
+    updateFlowUI();
+}
+
+function openLunchPrompt({ prefill = true } = {}) {
+    if (!lunchModal) return;
+
+    if (prefill) {
+        if (lunchInput) {
+            lunchInput.value = (lunchStart !== null && lunchStart !== undefined) ? secondsToClockHHMM(lunchStart) : '';
+        }
+        if (complexaToggle) {
+            complexaToggle.checked = Boolean(showComplexa);
+        }
+    }
+
+    lunchModal.style.display = 'flex';
+    try {
+        if (lunchInput) lunchInput.focus();
+    } catch {
+        // ignore
+    }
 }
 
 function computePerTypeStats() {
@@ -693,8 +748,15 @@ function loadState() {
     const b = localStorage.getItem(STORAGE_BAL);
     const tx = localStorage.getItem(STORAGE_TX);
     const l = localStorage.getItem(STORAGE_LUNCH);
+    const cplx = localStorage.getItem(STORAGE_COMPLEXA);
     timeBalance = b ? parseInt(b, 10) : 0;
     transactions = tx ? JSON.parse(tx) : [];
+
+    // Complexa preference (default: hidden unless user opts in)
+    showComplexa = cplx === '1';
+    if (complexaToggle) complexaToggle.checked = showComplexa;
+    if (complexaToggleDebug) complexaToggleDebug.checked = showComplexa;
+
     if (l) {
         const lunch = JSON.parse(l);
         lunchStart = lunch.start;
@@ -703,6 +765,9 @@ function loadState() {
         // First time, show lunch modal
         lunchModal.style.display = 'flex';
     }
+
+    // Apply after DOM is ready
+    applyComplexaVisibility();
 }
 
 
@@ -1225,6 +1290,7 @@ function endWorkDay() {
             lunchStartSeconds: lunchStart,
             lunchEndSeconds: lunchEnd,
             lunchStyleEnabled,
+            showComplexa,
         },
         snapshot: {
             now: {
@@ -1296,6 +1362,18 @@ if (lunchConfirmBtn) lunchConfirmBtn.addEventListener('click', () => {
             lunchStart = hours * 3600 + minutes * 60;
             lunchEnd = lunchStart + 3600; // 1 hour
             localStorage.setItem(STORAGE_LUNCH, JSON.stringify({start: lunchStart, end: lunchEnd}));
+
+            // Save Complexa preference together with lunch setup
+            if (complexaToggle) {
+                showComplexa = Boolean(complexaToggle.checked);
+                localStorage.setItem(STORAGE_COMPLEXA, showComplexa ? '1' : '0');
+                if (complexaToggleDebug) complexaToggleDebug.checked = showComplexa;
+                applyComplexaVisibility();
+
+                ensureAnalytics();
+                logEvent('complexa_enabled_set', { enabled: showComplexa, source: 'lunch_modal' });
+            }
+
             lunchModal.style.display = 'none';
 
             ensureAnalytics();
@@ -1308,6 +1386,57 @@ if (lunchConfirmBtn) lunchConfirmBtn.addEventListener('click', () => {
         alert('Formato de horário inválido. Use HH:MM');
     }
 });
+
+// Debug: re-open / reset onboarding prompts
+if (debugOpenLunchPromptBtn) {
+    debugOpenLunchPromptBtn.addEventListener('click', () => {
+        ensureAnalytics();
+        logEvent('debug_open_lunch_prompt', {});
+        openLunchPrompt({ prefill: true });
+    });
+}
+
+if (debugResetPromptsBtn) {
+    debugResetPromptsBtn.addEventListener('click', () => {
+        const ok = confirm('Isso vai resetar as perguntas iniciais (almoço e Complexa) e abrir o prompt de novo. Continuar?');
+        if (!ok) return;
+
+        // Clear first-run state
+        try {
+            localStorage.removeItem(STORAGE_LUNCH);
+            localStorage.removeItem(STORAGE_COMPLEXA);
+        } catch {
+            // ignore
+        }
+
+        lunchStart = null;
+        lunchEnd = null;
+
+        // Back to default (Complexa hidden) until user opts in again
+        showComplexa = false;
+        if (complexaToggle) complexaToggle.checked = false;
+        if (complexaToggleDebug) complexaToggleDebug.checked = false;
+        applyComplexaVisibility();
+
+        ensureAnalytics();
+        logEvent('debug_reset_prompts', {});
+
+        updateCurrentTime();
+        openLunchPrompt({ prefill: true });
+    });
+}
+
+// Complexa preference from debug panel
+if (complexaToggleDebug) {
+    complexaToggleDebug.addEventListener('change', () => {
+        showComplexa = Boolean(complexaToggleDebug.checked);
+        localStorage.setItem(STORAGE_COMPLEXA, showComplexa ? '1' : '0');
+        if (complexaToggle) complexaToggle.checked = showComplexa;
+        applyComplexaVisibility();
+        ensureAnalytics();
+        logEvent('complexa_enabled_set', { enabled: showComplexa, source: 'debug_panel' });
+    });
+}
 
 // Debug events
 if (setDebugTimeBtn) setDebugTimeBtn.addEventListener('click', () => {

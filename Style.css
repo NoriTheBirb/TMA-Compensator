@@ -99,6 +99,10 @@ body.lunch-mode .btn-lunch-confirm:hover {
     box-sizing: border-box;
 }
 
+.is-hidden {
+    display: none !important;
+}
+
 :root {
     --app-bg: #eef2f6;
     --surface: #f8fafc;
@@ -838,6 +842,70 @@ input:checked + .slider:before {
     padding: 20px 25px;
     border-top: 2px solid #f0f0f0;
     justify-content: flex-end;
+}
+
+/* First prompt (Lunch modal) button polish */
+#lunchModal .modal-actions {
+    justify-content: flex-end;
+}
+
+#lunchModal .btn-lunch-confirm {
+    appearance: none;
+    border: 1px solid rgba(0, 0, 0, 0.10);
+    border-radius: 12px;
+    padding: 12px 18px;
+    min-width: 140px;
+    font-weight: 800;
+    letter-spacing: 0.2px;
+    color: #fff;
+    background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+    box-shadow: 0 12px 26px rgba(15, 23, 42, 0.18);
+    transition: transform 0.18s ease, filter 0.18s ease, box-shadow 0.18s ease;
+}
+
+#lunchModal .btn-lunch-confirm:hover {
+    filter: brightness(1.03) saturate(1.06);
+    transform: translateY(-1px);
+    box-shadow: 0 16px 34px rgba(15, 23, 42, 0.22);
+}
+
+#lunchModal .btn-lunch-confirm:active {
+    transform: translateY(0);
+    filter: brightness(0.99);
+    box-shadow: 0 10px 20px rgba(15, 23, 42, 0.18);
+}
+
+#lunchModal .btn-lunch-confirm:focus-visible {
+    outline: 3px solid rgba(102, 126, 234, 0.35);
+    outline-offset: 2px;
+}
+
+#lunchModal .close-lunch-modal {
+    background: transparent;
+    border: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    font-size: 1.7em;
+    line-height: 1;
+    color: var(--muted);
+    cursor: pointer;
+    transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+#lunchModal .close-lunch-modal:hover {
+    background: rgba(0, 0, 0, 0.06);
+    color: var(--text);
+    transform: translateY(-1px);
+}
+
+#lunchModal .close-lunch-modal:active {
+    transform: translateY(0);
+}
+
+#lunchModal .close-lunch-modal:focus-visible {
+    outline: 3px solid rgba(102, 126, 234, 0.30);
+    outline-offset: 2px;
 }
 
 .btn-cancel,
