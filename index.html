@@ -45,6 +45,14 @@
                 <span class="switch-label">Flow Mode</span>
             </div>
 
+            <div class="switch-container">
+                <label class="switch">
+                    <input type="checkbox" id="themeToggle">
+                    <span class="slider"></span>
+                </label>
+                <span class="switch-label">Tema escuro</span>
+            </div>
+
             <div class="assistant-section">
                 <div class="account-assistant">
                     <div class="assistant-display">
@@ -87,7 +95,7 @@
                             <span id="simStatus" style="font-weight:600;">Stopped</span>
                         </div>
                         <div style="margin-top:6px; font-size:0.85em; color:#555;">
-                            Simulates time from 08:00 to 17:48 (lunch respected).
+                            <span id="simRangeHint">Simulates time from 08:00 to 17:48 (lunch respected).</span>
                         </div>
                     </div>
 
@@ -113,7 +121,7 @@
                     <strong>Info:</strong><br>
                     Real Time: <span id="realTimeDisplay">00:00:00</span><br>
                     Debug Time: <span id="debugTimeDisplay">Not set</span><br>
-                    Shift: 08:00 - 17:48<br>
+                    Shift: <span id="shiftDisplay">08:00 - 17:48</span><br>
                     Lunch: <span id="lunchDisplay">Not set</span><br>
                     Balance: <span id="debugBalanceDisplay">0</span><br>
                     Lunch Mode: <span id="lunchModeDisplay">No</span>
@@ -202,6 +210,7 @@
                 </div>
                 <div class="modal-actions">
                     <button class="btn-cancel">Cancelar</button>
+                    <button class="btn-paralyze" type="button">Paralisar</button>
                     <button class="btn-confirm">Confirmar</button>
                 </div>
             </div>
@@ -214,6 +223,10 @@
                     <button class="close-lunch-modal">&times;</button>
                 </div>
                 <div class="modal-body">
+                    <label>Digite o horário de início do turno (HH:MM)</label>
+                    <input type="text" id="shiftStartInput" placeholder="08:00" class="time-input">
+                    <div class="info-text">Isso ajusta o cálculo do seu turno (ex.: quem começa mais cedo).</div>
+
                     <label>Digite o horário de início do almoço (HH:MM)</label>
                     <input type="text" id="lunchInput" placeholder="12:00" class="time-input">
                     <div class="info-text">O almoço dura 1 hora e não conta para as horas de trabalho.</div>
@@ -231,6 +244,23 @@
         
         <div class="history" id="history">
 
+        </div>
+
+        <div class="modal" id="flowChoiceModal" aria-hidden="true">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 id="flowChoiceTitle">Flow</h2>
+                    <button class="close-flow-choice" type="button" aria-label="Fechar">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="info-text" id="flowChoiceText"></div>
+                </div>
+                <div class="modal-actions">
+                    <button class="flow-choice-cancel" type="button">Cancelar</button>
+                    <button class="flow-choice-paralyze" type="button">Paralisar</button>
+                    <button class="flow-choice-finalize" type="button">Finalizar</button>
+                </div>
+            </div>
         </div>
     </div>
     <script src="Script.js"></script>

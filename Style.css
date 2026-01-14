@@ -3,6 +3,7 @@ body.lunch-mode {
     --app-bg: linear-gradient(270deg, #e3f2fd, #f3e5f5, #ececec, #e3f2fd);
     --surface: rgba(255, 255, 255, 0.62);
     --card: rgba(255, 255, 255, 0.74);
+    --panel: rgba(255, 255, 255, 0.55);
     --text: #37474f;
     --muted: rgba(55, 71, 79, 0.72);
     --border: rgba(124, 58, 237, 0.16);
@@ -11,6 +12,10 @@ body.lunch-mode {
     --accent: #7c3aed;
     --accent-strong: #6d28d9;
     --good: #2e7d32;
+
+    --ok: var(--good);
+    --warn: #f59e0b;
+    --bad: #db2777;
 
     --status-positive: #2e7d32;
     --status-negative: #db2777;
@@ -107,6 +112,7 @@ body.lunch-mode .btn-lunch-confirm:hover {
     --app-bg: #eef2f6;
     --surface: #f8fafc;
     --card: #ffffff;
+    --panel: rgba(17, 24, 39, 0.04);
     --text: #111827;
     --muted: rgba(17, 24, 39, 0.72);
     --border: rgba(17, 24, 39, 0.10);
@@ -117,6 +123,10 @@ body.lunch-mode .btn-lunch-confirm:hover {
     --accent: #ef4444;
     --accent-strong: #ff6b6b;
     --good: #22c55e;
+
+    --ok: var(--good);
+    --warn: #f59e0b;
+    --bad: var(--accent);
 
     --status-positive: #16a34a;
     --status-negative: #ef4444;
@@ -410,6 +420,88 @@ h1 {
     font-size: 0.85em;
 }
 
+.assistant-body .assistant-guide__subtitle {
+    margin-top: 2px;
+    line-height: 1.25;
+}
+
+.assistant-body .assistant-guide__controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin: 6px 0 2px;
+}
+
+.assistant-body .assistant-guide__modeBtn {
+    appearance: none;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text);
+    border-radius: 999px;
+    padding: 6px 10px;
+    font-weight: 800;
+    font-size: 0.85em;
+    cursor: pointer;
+    transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.assistant-body .assistant-guide__modeBtn:hover {
+    transform: translateY(-1px);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.assistant-body .assistant-guide__modeBtn.is-active {
+    border-color: rgba(102, 126, 234, 0.35);
+    background: rgba(102, 126, 234, 0.14);
+}
+
+.assistant-body .assistant-guide__modeBtn:focus-visible {
+    outline: 3px solid rgba(102, 126, 234, 0.30);
+    outline-offset: 2px;
+}
+
+.assistant-body .assistant-guide__modeHint {
+    margin-left: 2px;
+}
+
+.assistant-body .assistant-guide__note {
+    margin-left: 6px;
+    opacity: 0.9;
+}
+
+.assistant-body .assistant-guide__steps {
+    margin: 10px 0 0;
+    padding-left: 18px;
+    display: grid;
+    gap: 8px;
+}
+
+.assistant-body .assistant-guide__step {
+    margin: 0;
+}
+
+.assistant-body .assistant-guide__stepTitle {
+    font-weight: 700;
+    color: var(--text);
+}
+
+.assistant-body .assistant-guide__pill {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.04);
+    font-size: 0.85em;
+    font-weight: 800;
+    font-family: 'Courier New', monospace;
+}
+
+.assistant-body .assistant-guide__stepMeta {
+    margin-top: 4px;
+}
+
 .assistant-body details {
     margin-top: 6px;
     border-radius: var(--radius-md);
@@ -469,6 +561,7 @@ h1 {
     align-items: center;
     justify-content: center;
     gap: 10px;
+    padding: 16px 18px;
 }
 
 .switch-label {
@@ -753,7 +846,9 @@ input:checked + .slider:before {
 }
 
 .modal-content {
-    background: #f8f9fa;
+    background: var(--card);
+    color: var(--text);
+    border: 1px solid var(--border);
     border-radius: 12px;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
     max-width: 400px;
@@ -778,25 +873,51 @@ input:checked + .slider:before {
     justify-content: space-between;
     align-items: center;
     padding: 20px 25px;
-    border-bottom: 2px solid #dee2e6;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in oklab, var(--surface) 70%, transparent);
 }
 
 .modal-header h2 {
-    color: #212529;
+    color: var(--text);
     font-size: 1.5em;
 }
 
 .close-modal {
-    background: none;
+    background: transparent;
     border: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
     font-size: 1.8em;
-    color: #6c757d;
+    line-height: 1;
+    color: var(--muted);
     cursor: pointer;
-    transition: color 0.3s ease;
+    transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
 }
 
 .close-modal:hover {
-    color: #212529;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text);
+    transform: translateY(-1px);
+}
+
+.close-flow-choice {
+    background: transparent;
+    border: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    font-size: 1.8em;
+    line-height: 1;
+    color: var(--muted);
+    cursor: pointer;
+    transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+.close-flow-choice:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text);
+    transform: translateY(-1px);
 }
 
 .modal-body {
@@ -805,7 +926,7 @@ input:checked + .slider:before {
 
 .modal-body label {
     display: block;
-    color: #2c3e50;
+    color: var(--muted);
     font-weight: 600;
     margin-bottom: 10px;
     font-size: 0.95em;
@@ -814,7 +935,9 @@ input:checked + .slider:before {
 .time-input {
     width: 100%;
     padding: 12px 15px;
-    border: 2px solid #e8ecf1;
+    background: color-mix(in oklab, var(--surface) 85%, transparent);
+    color: var(--text);
+    border: 1px solid var(--border);
     border-radius: 8px;
     font-size: 1.1em;
     font-family: 'Courier New', monospace;
@@ -826,12 +949,12 @@ input:checked + .slider:before {
 
 .time-input:focus {
     outline: none;
-    border-color: #667eea;
+    border-color: color-mix(in oklab, var(--accent) 60%, var(--border));
 }
 
 .info-text {
     text-align: center;
-    color: #667eea;
+    color: var(--accent);
     font-weight: 600;
     font-size: 0.9em;
 }
@@ -840,7 +963,7 @@ input:checked + .slider:before {
     display: flex;
     gap: 10px;
     padding: 20px 25px;
-    border-top: 2px solid #f0f0f0;
+    border-top: 1px solid var(--border);
     justify-content: flex-end;
 }
 
@@ -894,7 +1017,7 @@ input:checked + .slider:before {
 }
 
 #lunchModal .close-lunch-modal:hover {
-    background: rgba(0, 0, 0, 0.06);
+    background: color-mix(in oklab, var(--panel) 70%, transparent);
     color: var(--text);
     transform: translateY(-1px);
 }
@@ -919,13 +1042,40 @@ input:checked + .slider:before {
     font-size: 0.95em;
 }
 
+.btn-paralyze {
+    padding: 10px 20px;
+    border: 1px solid color-mix(in oklab, var(--warn) 55%, var(--border));
+    border-radius: 6px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 0.95em;
+    background: color-mix(in oklab, var(--warn) 22%, transparent);
+    color: var(--text);
+}
+
+.btn-paralyze:hover {
+    background: color-mix(in oklab, var(--warn) 28%, transparent);
+    transform: translateY(-1px);
+}
+
 .btn-cancel {
-    background: #e8ecf1;
-    color: #2c3e50;
+    background: color-mix(in oklab, var(--panel) 70%, transparent);
+    color: var(--text);
+    border: 1px solid var(--border);
 }
 
 .btn-cancel:hover {
-    background: #d5dce3;
+    filter: brightness(1.04);
+}
+
+.btn-confirm {
+    border: 1px solid color-mix(in oklab, var(--accent) 55%, var(--border));
+}
+
+#flowChoiceText {
+    white-space: pre-line;
+    line-height: 1.35;
 }
 
 .btn-confirm {
@@ -1011,6 +1161,105 @@ input:checked + .slider:before {
     color: var(--status-positive);
 }
 
+
+.paused-section {
+    margin-bottom: 14px;
+    padding: 12px;
+    border-radius: 12px;
+    background: color-mix(in oklab, var(--card) 88%, var(--panel) 12%);
+    border: 1px dashed color-mix(in oklab, var(--border) 70%, transparent);
+}
+
+.paused-header {
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 8px;
+}
+
+.paused-list {
+    display: grid;
+    gap: 10px;
+}
+
+.paused-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: var(--card);
+    border: 1px solid var(--border);
+}
+
+.paused-title {
+    color: var(--text);
+}
+
+.paused-meta {
+    margin-top: 2px;
+    font-size: 0.9em;
+    color: var(--muted);
+}
+
+.paused-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.paused-btn {
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--text);
+    padding: 8px 10px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-weight: 700;
+}
+
+.paused-btn:hover {
+    filter: brightness(1.03);
+}
+
+.paused-resume {
+    border-color: color-mix(in oklab, var(--ok) 45%, var(--border));
+}
+
+.paused-discard {
+    border-color: color-mix(in oklab, var(--bad) 45%, var(--border));
+}
+
+/* Flow choice modal (Finalize/Paralyze) */
+#flowChoiceModal .info-text {
+    margin: 0;
+}
+
+.flow-choice-cancel,
+.flow-choice-paralyze,
+.flow-choice-finalize {
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--text);
+    padding: 10px 12px;
+    border-radius: 12px;
+    cursor: pointer;
+    font-weight: 800;
+}
+
+.flow-choice-paralyze {
+    border-color: color-mix(in oklab, var(--warn) 55%, var(--border));
+}
+
+.flow-choice-finalize {
+    border-color: color-mix(in oklab, var(--ok) 55%, var(--border));
+}
+
+.flow-choice-cancel:hover,
+.flow-choice-paralyze:hover,
+.flow-choice-finalize:hover {
+    filter: brightness(1.04);
+}
 .history-time.negative {
     color: var(--status-negative);
 }
@@ -1019,11 +1268,12 @@ input:checked + .slider:before {
     color: var(--status-neutral);
 }
 
-/* Flow Mode Styles */
-body.flow-mode {
+/* Dark Theme (independent from Flow Mode) */
+body.dark-theme:not(.lunch-mode) {
     --app-bg: linear-gradient(135deg, #3a424c, #2f3640);
     --surface: rgba(52, 58, 64, 0.92);
     --card: rgba(61, 68, 80, 0.92);
+    --panel: rgba(248, 250, 252, 0.10);
     --text: #f8fafc;
     --muted: rgba(248, 250, 252, 0.75);
     --border: rgba(255, 255, 255, 0.12);
@@ -1033,6 +1283,10 @@ body.flow-mode {
     --accent-strong: #ff5252;
     --good: #51cf66;
 
+    --ok: var(--good);
+    --warn: #fbbf24;
+    --bad: var(--accent);
+
     --status-positive: #51cf66;
     --status-negative: #ff6b6b;
     --status-neutral: rgba(248, 250, 252, 0.82);
@@ -1041,57 +1295,57 @@ body.flow-mode {
     color: var(--text);
 }
 
-body.flow-mode h1 {
+body.dark-theme:not(.lunch-mode) h1 {
     color: white;
 }
 
-body.flow-mode .container,
-body.flow-mode .top-row,
-body.flow-mode .time-row {
+body.dark-theme:not(.lunch-mode) .container,
+body.dark-theme:not(.lunch-mode) .top-row,
+body.dark-theme:not(.lunch-mode) .time-row {
     background: transparent;
     box-shadow: none;
     border: none;
 }
 
-body.flow-mode .control-section,
-body.flow-mode .control-header {
+body.dark-theme:not(.lunch-mode) .control-section,
+body.dark-theme:not(.lunch-mode) .control-header {
     background: var(--surface);
     color: var(--text);
     border-color: var(--border);
 }
 
-body.flow-mode .time-balance,
-body.flow-mode .current-time,
-body.flow-mode .account-assistant {
+body.dark-theme:not(.lunch-mode) .time-balance,
+body.dark-theme:not(.lunch-mode) .current-time,
+body.dark-theme:not(.lunch-mode) .account-assistant {
     background: var(--card);
     color: var(--text);
     box-shadow: var(--shadow-md);
     border: 1px solid var(--border);
 }
 
-body.flow-mode .balance-label,
-body.flow-mode .balance-value,
-body.flow-mode .time-label,
-body.flow-mode .time-value,
-body.flow-mode .assistant-label,
-body.flow-mode .switch-label,
-body.flow-mode .box-content h3 {
+body.dark-theme:not(.lunch-mode) .balance-label,
+body.dark-theme:not(.lunch-mode) .balance-value,
+body.dark-theme:not(.lunch-mode) .time-label,
+body.dark-theme:not(.lunch-mode) .time-value,
+body.dark-theme:not(.lunch-mode) .assistant-label,
+body.dark-theme:not(.lunch-mode) .switch-label,
+body.dark-theme:not(.lunch-mode) .box-content h3 {
     color: white;
 }
 
-body.flow-mode .balance-value {
+body.dark-theme:not(.lunch-mode) .balance-value {
     text-shadow: 0 0 14px rgba(255, 255, 255, 0.16);
 }
 
-body.flow-mode .balance-value.positive {
+body.dark-theme:not(.lunch-mode) .balance-value.positive {
     text-shadow: 0 0 16px rgba(81, 207, 102, 0.25);
 }
 
-body.flow-mode .balance-value.negative {
+body.dark-theme:not(.lunch-mode) .balance-value.negative {
     text-shadow: 0 0 16px rgba(255, 107, 107, 0.28);
 }
 
-body.flow-mode .switch-container {
+body.dark-theme:not(.lunch-mode) .switch-container {
     background: var(--card);
     padding: 20px;
     border-radius: var(--radius-lg);
@@ -1100,39 +1354,49 @@ body.flow-mode .switch-container {
     margin-top: 20px;
 }
 
-body.flow-mode .slider {
+body.dark-theme:not(.lunch-mode) .slider {
     background: rgba(248, 250, 252, 0.22);
 }
 
-body.flow-mode .slider:before {
+body.dark-theme:not(.lunch-mode) .slider:before {
     background: white;
 }
 
-body.flow-mode input:checked + .slider {
+body.dark-theme:not(.lunch-mode) input:checked + .slider {
     background: var(--accent);
     box-shadow: 0 0 18px rgba(255, 107, 107, 0.55);
 }
 
+/* Flow Mode: focus/behavior changes (theme is separate) */
 body.flow-mode .control-box {
     animation: flowEnter 0.6s ease-out, pulse 2s infinite 0.6s;
-    background: linear-gradient(45deg, rgba(61, 68, 80, 0.92), rgba(52, 58, 64, 0.92));
-    color: var(--text);
     transition: all 0.2s ease;
-    border: 1px solid var(--border);
-    box-shadow: var(--shadow-sm);
 }
 
 body.flow-mode .control-box:hover {
-    transform: scale(1.05);
-    box-shadow: 0 10px 30px rgba(52, 58, 64, 0.4);
-}
-
-body.flow-mode .box-content h3 {
-    color: white;
+    transform: scale(1.03);
 }
 
 body.flow-mode .box-content p {
     display: none;
+}
+
+.flow-tma {
+    display: none;
+    margin: 6px 0 10px;
+    padding: 6px 10px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.04);
+    font-family: 'Courier New', monospace;
+    font-weight: 800;
+    font-size: 0.85em;
+    color: var(--muted);
+    text-align: center;
+}
+
+body.flow-mode .flow-tma {
+    display: block;
 }
 
 body.flow-mode .timer-display {
@@ -1144,9 +1408,13 @@ body.flow-mode .timer-display {
     text-align: center;
     margin: 15px 0;
     padding: 10px;
-    background: rgba(248, 250, 252, 0.10);
+    background: rgba(17, 24, 39, 0.06);
     border-radius: 8px;
     animation: none;
+}
+
+body.flow-mode.dark-theme:not(.lunch-mode) .timer-display {
+    background: rgba(248, 250, 252, 0.10);
 }
 
 body.flow-mode .btn-action {
@@ -1172,34 +1440,47 @@ body.flow-mode .btn-action.start-btn:hover {
     transform: translateY(-2px);
 }
 
-body.flow-mode .btn-reset,
-body.flow-mode .btn-end-day {
+
+body.dark-theme:not(.lunch-mode) .btn-reset,
+body.dark-theme:not(.lunch-mode) .btn-end-day {
     background: rgba(255, 255, 255, 0.15);
     color: rgba(255, 255, 255, 0.95);
     border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
-body.flow-mode .btn-reset:hover,
-body.flow-mode .btn-end-day:hover {
+body.dark-theme:not(.lunch-mode) .btn-reset:hover,
+body.dark-theme:not(.lunch-mode) .btn-end-day:hover {
     background: rgba(255, 255, 255, 0.25);
 }
 
-body.flow-mode .history {
+body.dark-theme:not(.lunch-mode) .history {
     background: rgba(52, 58, 64, 0.9);
     border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-body.flow-mode .history-item {
+body.dark-theme:not(.lunch-mode) .history-item {
     border-bottom-color: rgba(255, 255, 255, 0.1);
 }
 
-body.flow-mode .history-item:hover {
+body.dark-theme:not(.lunch-mode) .history-item:hover {
     background: rgba(255, 255, 255, 0.05);
 }
 
-body.flow-mode .history-info h4,
-body.flow-mode .history-info p {
+body.dark-theme:not(.lunch-mode) .history-info h4,
+body.dark-theme:not(.lunch-mode) .history-info p {
     color: white;
+}
+
+/* Keep the old Flow Mode card look when Flow Mode + Dark Theme are both enabled */
+body.flow-mode.dark-theme:not(.lunch-mode) .control-box {
+    background: linear-gradient(45deg, rgba(61, 68, 80, 0.92), rgba(52, 58, 64, 0.92));
+    color: var(--text);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-sm);
+}
+
+body.flow-mode.dark-theme:not(.lunch-mode) .control-box:hover {
+    box-shadow: 0 10px 30px rgba(52, 58, 64, 0.4);
 }
 
 @keyframes pulse {
