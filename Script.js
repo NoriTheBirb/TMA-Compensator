@@ -1,7 +1,25 @@
-let timeBalance = 0; // Segundo
+/*
+    TMA Compensator (página principal)
+
+    Ideia geral:
+    - Você registra o tempo gasto por conta (Conferência/Retorno) e o app acumula o saldo: (Gasto - TMA).
+    - Meta do dia: 17 contas (Complexa vale 2).
+    - "Dia bom" aqui é saldo perto de 00:00:00 (margem ±10min), não importa o sinal.
+    - O estado do dia fica em localStorage (saldo, transações, pausados, preferências).
+    - Flow Mode é um timer por conta (persistido) para não perder ao navegar.
+
+    Observação: comentários aqui são só pra orientar; evito mexer na lógica.
+*/
+
+// =============================================================================
+// Estado do dia + chaves de storage
+// =============================================================================
+
+// Estado do dia (em memória; persistido em localStorage via saveState)
+let timeBalance = 0; // segundos
 let transactions = [];
 
-// Keys de Storage
+// Storage keys (não renomear: quebra compatibilidade com dados já salvos)
 const STORAGE_BAL = 'tma_comp_balance_v1';
 const STORAGE_TX = 'tma_comp_transactions_v1';
 const STORAGE_LUNCH = 'tma_comp_lunch_v1';
@@ -11,13 +29,20 @@ const STORAGE_ASSISTANT_GUIDE_MODE = 'tma_comp_assistant_guide_mode_v1';
 const STORAGE_DARK_THEME = 'tma_comp_dark_theme_v1';
 const STORAGE_PAUSED_WORK = 'tma_comp_paused_work_v1';
 const STORAGE_SHIFT_START = 'tma_comp_shift_start_v1';
+const STORAGE_FLOW_MODE = 'tma_comp_flow_mode_v1';
+const STORAGE_FLOW_ACTIVE_TIMER = 'tma_comp_flow_active_timer_v1';
 
 const ANALYTICS_SCHEMA_VERSION = 1;
 const MAX_ANALYTICS_EVENTS = 2000;
 
+// Analytics é só telemetria local (não sai do browser). Ajuda a entender uso e ajustar o guia.
 let analytics = null;
 
-// Elementos
+// =============================================================================
+// Elementos da UI
+// =============================================================================
+
+// Elementos (UI)
 const balanceDisplay = document.getElementById('balance');
 const currentTimeDisplay = document.getElementById('currentTime');
 const turnoNow = document.getElementById('turnoNow');
@@ -59,6 +84,130 @@ const debugOpenLunchPromptBtn = document.getElementById('debugOpenLunchPromptBtn
 const debugResetPromptsBtn = document.getElementById('debugResetPromptsBtn');
 const accountsCount = document.getElementById('accountsCount');
 const assistantBody = document.getElementById('assistantBody');
+const welcomeGreeting = document.getElementById('welcomeGreeting');
+const welcomeGreetingText = document.querySelector('#welcomeGreeting .welcome-greeting-text');
+
+// =============================================================================
+// Onboarding (turno + almoço + complexa)
+// =============================================================================
+
+// Welcome/Onboarding (turno + almoço + complexa)
+let welcomeIntroTimerA = null;
+let welcomeIntroTimerB = null;
+let welcomeOutroTimerA = null;
+let welcomeOutroTimerB = null;
+let welcomeOutroTimerC = null;
+let welcomeOutroTimerD = null;
+let welcomeOutroRunning = false;
+
+function clearWelcomeTimers() {
+    for (const t of [welcomeIntroTimerA, welcomeIntroTimerB, welcomeOutroTimerA, welcomeOutroTimerB, welcomeOutroTimerC, welcomeOutroTimerD]) {
+        if (t) {
+            try { clearTimeout(t); } catch { /* ignore */ }
+        }
+    }
+    welcomeIntroTimerA = null;
+    welcomeIntroTimerB = null;
+    welcomeOutroTimerA = null;
+    welcomeOutroTimerB = null;
+    welcomeOutroTimerC = null;
+    welcomeOutroTimerD = null;
+}
+
+function startWelcomeIntroSequence() {
+    if (!lunchModal) return;
+    clearWelcomeTimers();
+    welcomeOutroRunning = false;
+
+    lunchModal.classList.remove('stage-form', 'stage-outro', 'stage-success', 'is-collapsing');
+    lunchModal.classList.add('stage-intro');
+    if (welcomeGreetingText) welcomeGreetingText.textContent = 'Bem-vindo!';
+    else if (welcomeGreeting) welcomeGreeting.textContent = 'Bem-vindo!';
+
+    // Depois que a saudação aparece, ela sobe e o formulário entra.
+    welcomeIntroTimerA = window.setTimeout(() => {
+        if (!lunchModal.classList.contains('active')) return;
+        lunchModal.classList.remove('stage-intro');
+        lunchModal.classList.add('stage-form');
+
+        // Foco depois do formulário ter tempo de aparecer.
+        welcomeIntroTimerB = window.setTimeout(() => {
+            try {
+                if (shiftStartInput) shiftStartInput.focus();
+                else if (lunchInput) lunchInput.focus();
+            } catch {
+                // ignore
+            }
+        }, 700);
+    }, 1100);
+}
+
+function playWelcomeOutroAndClose() {
+    if (!lunchModal) return;
+    if (welcomeOutroRunning) return;
+    welcomeOutroRunning = true;
+    clearWelcomeTimers();
+
+    // Some o formulário e, no próximo frame, entra no "outro" (pra transição rodar).
+    lunchModal.classList.remove('stage-form', 'stage-intro');
+    try {
+        requestAnimationFrame(() => {
+            try {
+                lunchModal.classList.add('stage-outro');
+            } catch {
+                // ignore
+            }
+        });
+    } catch {
+        lunchModal.classList.add('stage-outro');
+    }
+
+    // Troca o texto quando a saudação estiver centralizada.
+    welcomeOutroTimerA = window.setTimeout(() => {
+        if (welcomeGreetingText) welcomeGreetingText.textContent = 'Bom trabalho!';
+        else if (welcomeGreeting) welcomeGreeting.textContent = 'Bom trabalho!';
+    }, 420);
+
+    // Animação de sucesso (anel + check).
+    welcomeOutroTimerB = window.setTimeout(() => {
+        try { lunchModal.classList.add('stage-success'); } catch { /* ignore */ }
+    }, 520);
+
+    // Fecha a caixa (deixa o sucesso visível um pouco mais).
+    welcomeOutroTimerC = window.setTimeout(() => {
+        lunchModal.classList.add('is-collapsing');
+    }, 2550);
+
+    // Fecha e libera a UI principal.
+    welcomeOutroTimerD = window.setTimeout(() => {
+        welcomeOutroRunning = false;
+        setLunchModalOpen(false, { focus: false });
+
+        // Reseta as classes pra reabrir sempre do começo.
+        try {
+            lunchModal.classList.remove('stage-outro', 'stage-success', 'is-collapsing');
+            if (welcomeGreetingText) welcomeGreetingText.textContent = 'Bem-vindo!';
+            else if (welcomeGreeting) welcomeGreeting.textContent = 'Bem-vindo!';
+        } catch {
+            // ignore
+        }
+    }, 3050);
+}
+
+// =============================================================================
+// Sidebar (drawer) + modal de escolha do Flow
+// =============================================================================
+
+// Sidebar (drawer)
+const sidebar = document.getElementById('sidebar');
+const sidebarOverlay = document.getElementById('sidebarOverlay');
+const sidebarToggleBtn = document.getElementById('sidebarToggleBtn');
+const sidebarCloseBtn = document.getElementById('sidebarCloseBtn');
+const sidebarFlowToggle = document.getElementById('sidebarFlowToggle');
+const sidebarThemeToggle = document.getElementById('sidebarThemeToggle');
+const sidebarComplexaToggle = document.getElementById('sidebarComplexaToggle');
+const sidebarOpenOnboardingBtn = document.getElementById('sidebarOpenOnboardingBtn');
+const sidebarExportBtn = document.getElementById('sidebarExportBtn');
 
 // Flow choice modal
 const flowChoiceModal = document.getElementById('flowChoiceModal');
@@ -71,9 +220,50 @@ const flowChoiceFinalizeBtn = document.querySelector('.flow-choice-finalize');
 
 let flowChoiceHandler = null;
 
+function isSidebarOpen() {
+    return Boolean(sidebar && sidebar.classList.contains('is-open'));
+}
+
+function syncSidebarControls() {
+    if (sidebarFlowToggle) sidebarFlowToggle.checked = Boolean(flowMode);
+    if (sidebarThemeToggle) sidebarThemeToggle.checked = Boolean(darkThemeEnabled);
+    if (sidebarComplexaToggle) sidebarComplexaToggle.checked = Boolean(showComplexa);
+}
+
+function setSidebarOpen(open) {
+    const nextOpen = Boolean(open);
+    if (!sidebar || !sidebarOverlay) return;
+
+    sidebar.classList.toggle('is-open', nextOpen);
+    sidebarOverlay.classList.toggle('is-open', nextOpen);
+    try {
+        // Força animação do drawer só enquanto estiver aberto (mesmo com reduced-motion).
+        document.body.classList.toggle('force-sidebar-animations', nextOpen);
+    } catch {
+        // ignore
+    }
+    sidebar.setAttribute('aria-hidden', nextOpen ? 'false' : 'true');
+    sidebarOverlay.setAttribute('aria-hidden', nextOpen ? 'false' : 'true');
+    if (sidebarToggleBtn) sidebarToggleBtn.setAttribute('aria-expanded', nextOpen ? 'true' : 'false');
+
+    if (nextOpen) {
+        syncSidebarControls();
+        try {
+            const focusTarget = sidebar.querySelector('button, input, [tabindex]:not([tabindex="-1"])');
+            if (focusTarget) focusTarget.focus();
+        } catch {
+            // ignore
+        }
+    }
+}
+
+function toggleSidebar() {
+    setSidebarOpen(!isSidebarOpen());
+}
+
 function openFlowChoice({ title, text, finalizeLabel, paralyzeLabel, cancelLabel }, onChoice) {
     if (!flowChoiceModal) {
-        // Fallback (should be rare)
+        // Plano B (deve ser raro): usa o confirm do navegador.
         const finalize = confirm(`${text}\n\nOK = Finalizar\nCancelar = Paralisar`);
         onChoice(finalize ? 'finalize' : 'paralyze');
         return;
@@ -101,6 +291,10 @@ if (closeFlowChoiceBtn) closeFlowChoiceBtn.addEventListener('click', () => close
 if (flowChoiceCancelBtn) flowChoiceCancelBtn.addEventListener('click', () => closeFlowChoice('cancel'));
 if (flowChoiceParalyzeBtn) flowChoiceParalyzeBtn.addEventListener('click', () => closeFlowChoice('paralyze'));
 if (flowChoiceFinalizeBtn) flowChoiceFinalizeBtn.addEventListener('click', () => closeFlowChoice('finalize'));
+
+// =============================================================================
+// Debug (simulador de turno)
+// =============================================================================
 
 // Debug shift simulator
 const simSpeed = document.getElementById('simSpeed');
@@ -142,10 +336,97 @@ let assistantDetailsOpen = false;
 let flowMode = false;
 let activeTimers = {}; // to track timers per button
 
+function setFlowModePersisted(next) {
+    flowMode = Boolean(next);
+    try { localStorage.setItem(STORAGE_FLOW_MODE, flowMode ? '1' : '0'); } catch { /* ignore */ }
+    if (timeToggle) timeToggle.checked = flowMode;
+    if (sidebarFlowToggle) sidebarFlowToggle.checked = flowMode;
+}
+
+function clearPersistedActiveFlowTimer() {
+    try { localStorage.removeItem(STORAGE_FLOW_ACTIVE_TIMER); } catch { /* ignore */ }
+}
+
+function persistActiveFlowTimer() {
+    const key = getActiveTimerKey();
+    if (!key || !activeTimers || !activeTimers[key]) {
+        clearPersistedActiveFlowTimer();
+        return;
+    }
+    const start = Number(activeTimers[key].start);
+    const baseSeconds = Math.max(0, Math.floor(Number(activeTimers[key].baseSeconds) || 0));
+    if (!Number.isFinite(start) || start <= 0) return;
+
+    const btn = getButtonForFlowKey(key);
+    const item = btn ? String(btn.dataset.item || '') : '';
+    const type = btn ? String(btn.dataset.type || '') : '';
+    const tma = btn ? (parseInt(btn.dataset.tma, 10) || 0) : 0;
+    try {
+        localStorage.setItem(STORAGE_FLOW_ACTIVE_TIMER, JSON.stringify({
+            key: String(key),
+            start,
+            baseSeconds,
+            item,
+            type,
+            tma,
+            savedAtIso: new Date().toISOString(),
+        }));
+    } catch {
+        // ignore
+    }
+}
+
+function restorePersistedFlowMode() {
+    const v = localStorage.getItem(STORAGE_FLOW_MODE);
+    if (v === '1') flowMode = true;
+    else if (v === '0') flowMode = false;
+    if (timeToggle) timeToggle.checked = Boolean(flowMode);
+    if (sidebarFlowToggle) sidebarFlowToggle.checked = Boolean(flowMode);
+}
+
+function restorePersistedActiveFlowTimer() {
+    let raw = null;
+    try { raw = localStorage.getItem(STORAGE_FLOW_ACTIVE_TIMER); } catch { raw = null; }
+    if (!raw) return false;
+
+    let parsed = null;
+    try { parsed = JSON.parse(raw); } catch { parsed = null; }
+    const key = String(parsed?.key || '');
+    const start = Number(parsed?.start);
+    const baseSeconds = Math.max(0, Math.floor(Number(parsed?.baseSeconds) || 0));
+    if (!key || !Number.isFinite(start) || start <= 0) return false;
+
+    const btn = getButtonForFlowKey(key);
+    if (!btn) return false;
+
+    // Limpa timers em memória que possam ter sobrado
+    for (const k of Object.keys(activeTimers || {})) {
+        try { clearInterval(activeTimers[k]?.interval); } catch { /* ignore */ }
+    }
+    activeTimers = {};
+
+    // Força o Flow ligado ao restaurar um timer em andamento
+    setFlowModePersisted(true);
+
+    const timerDisplay = btn.closest('.control-box')?.querySelector('.timer-display') || null;
+    activeTimers[key] = { start, baseSeconds, interval: null };
+
+    const tick = () => {
+        const elapsed = Math.floor((Date.now() - start) / 1000);
+        const total = baseSeconds + Math.max(0, elapsed);
+        if (timerDisplay) timerDisplay.textContent = secondsToTime(total);
+    };
+    tick();
+    activeTimers[key].interval = setInterval(tick, 100);
+
+    updateFlowUI();
+    return true;
+}
+
 // Paused (paralyzed) work per action key (item-type)
 let pausedWork = {};
 
-// When opening the modal to resume a paused entry, we track which paused entry is being resumed
+// Ao abrir o modal pra retomar, guardamos qual pausado está sendo retomado
 let resumePausedContext = null; // { key, entryId }
 
 function makePausedEntryId() {
@@ -291,18 +572,18 @@ let showComplexa = false;
 
 let darkThemeEnabled = false;
 
-// Assistant guide mode
-// - conservative: prefers known actions, shorter plan
-// - aggressive: more flexible, longer plan
+// Guia de contas (assistente)
+// - conservative: prefere tipos com histórico, lista curta
+// - aggressive: aceita mais variação, lista maior
 let assistantGuideMode = 'conservative';
 
-let debugTime = null; // for testing, seconds since midnight
+let debugTime = null; // pra testes: segundos desde 00:00
 let lunchStyleEnabled = true;
 
 let cachedActionCatalog = null;
 
 if (toggleLunchStyle) {
-    // Ensure switch is checked by default
+    // Por padrão, o switch começa ligado
     toggleLunchStyle.checked = true;
     toggleLunchStyle.addEventListener('change', function() {
         lunchStyleEnabled = this.checked;
@@ -315,8 +596,12 @@ if (toggleLunchStyle) {
     });
 }
 
+// =============================================================================
+// Utilitários de tempo (parse/format)
+// =============================================================================
+
 // Traduz tempo em segundos
-// Aceita HH:MM:SS, MM:SS, MM, or H:MM:SS
+// Aceita HH:MM:SS, MM:SS, MM ou H:MM:SS
 function timeToSeconds(timeString) {
     if (!timeString) return null;
     const parts = timeString.trim().split(':').map(s => s.replace(/[^0-9]/g, ''));
@@ -405,6 +690,7 @@ function getGuideModeSettings(mode) {
             maxSteps: 5,
             unknownPenalty: 80,
             minHistoryCount: 0,
+            returnPenalty: 20,
         };
     }
     return {
@@ -412,6 +698,7 @@ function getGuideModeSettings(mode) {
         maxSteps: 3,
         unknownPenalty: 420,
         minHistoryCount: 1,
+        returnPenalty: 120,
     };
 }
 
@@ -514,9 +801,9 @@ function loadAnalytics() {
             return;
         }
         const parsed = JSON.parse(raw);
-        if (!parsed || typeof parsed !== 'object') throw new Error('Invalid analytics');
+        if (!parsed || typeof parsed !== 'object') throw new Error('Analytics inválido');
 
-        // Minimal schema guard
+        // Guarda mínima de schema
         if (parsed.schemaVersion !== ANALYTICS_SCHEMA_VERSION) {
             analytics = createAnalytics();
             saveAnalytics();
@@ -569,7 +856,7 @@ function trackAssistantRecommendation(reco, avgDiffTarget, remainingAccounts) {
     if (!reco || !reco.best || !reco.best.key) return;
     ensureAnalytics();
 
-    // Avoid logging every second: only when the "best" or the rounded target changes
+    // Evita logar a cada segundo: só quando o "melhor" ou o alvo arredondado muda
     const roundedTarget = Math.round((Number(avgDiffTarget) || 0) / 30) * 30; // 30s steps
     const sig = `${reco.best.key}|${roundedTarget}`;
     if (analytics.assistant.lastRecoSig === sig) return;
@@ -609,7 +896,7 @@ function markRecommendationFollowedIfMatch(tx, source) {
     const key = `${String(tx?.item || '')}__${String(tx?.type || '')}`;
     if (!key || key !== last.key) return;
 
-    // Consider it "followed" if it's the next matching transaction within 30 minutes of the recommendation
+    // Conta como "seguiu" se for a próxima transação do mesmo tipo em até 30 min da recomendação
     const { currentSeconds } = getCurrentSeconds();
     if (Number.isFinite(last.shownAtSeconds) && (currentSeconds - last.shownAtSeconds) > 30 * 60) return;
 
@@ -736,7 +1023,7 @@ function applyComplexaVisibility() {
         el.classList.toggle('is-hidden', !showComplexa);
     });
 
-    // If hiding while a complex timer is running, block by reverting state
+    // Se tentar esconder enquanto um timer de Complexa está rodando, bloqueia e reverte.
     const activeKey = getActiveTimerKey();
     if (!showComplexa && activeKey && activeKey.startsWith('Complexa-')) {
         showComplexa = true;
@@ -748,13 +1035,13 @@ function applyComplexaVisibility() {
         return;
     }
 
-    // Reset cached catalog so assistant recommendations update
+    // Reseta o catálogo cacheado pra atualizar as sugestões do guia.
     cachedActionCatalog = null;
     updateAssistant();
     updateFlowUI();
 }
 
-function openLunchPrompt({ prefill = true } = {}) {
+function openLunchPrompt({ prefill = true, lock = false } = {}) {
     if (!lunchModal) return;
 
     if (prefill) {
@@ -769,17 +1056,65 @@ function openLunchPrompt({ prefill = true } = {}) {
         }
     }
 
-    lunchModal.style.display = 'flex';
+    setLunchModalOpen(true, { lock });
+}
+
+function setLunchModalOpen(nextOpen, { focus = true, lock = false } = {}) {
+    if (!lunchModal) return;
+    const open = Boolean(nextOpen);
+
+    // Permite animações de boas-vindas mesmo com prefers-reduced-motion.
+    // Vale só pra tela de boas-vindas.
     try {
-        if (shiftStartInput) shiftStartInput.focus();
-        else if (lunchInput) lunchInput.focus();
+        document.body.classList.toggle('force-welcome-animations', open);
     } catch {
         // ignore
     }
+
+    // Enquanto o onboarding estiver aberto, esconde a página principal atrás.
+    document.body.classList.toggle('welcome-lock', open);
+    lunchModal.dataset.locked = lock ? '1' : '0';
+    if (closeLunchModalBtn) {
+        closeLunchModalBtn.style.display = lock ? 'none' : '';
+    }
+
+    lunchModal.classList.toggle('active', open);
+    try {
+        lunchModal.setAttribute('aria-hidden', open ? 'false' : 'true');
+    } catch {
+        // ignore
+    }
+
+    if (!open) {
+        clearWelcomeTimers();
+        welcomeOutroRunning = false;
+        try {
+            lunchModal.classList.remove('stage-intro', 'stage-form', 'stage-outro', 'is-collapsing');
+        } catch {
+            // ignore
+        }
+        return;
+    }
+
+    // Sempre inicia a sequência de intro ao abrir (no próximo frame, pra CSS animar).
+    try {
+        lunchModal.classList.remove('stage-intro', 'stage-form', 'stage-outro', 'is-collapsing');
+    } catch {
+        // ignore
+    }
+    try {
+        requestAnimationFrame(() => {
+            startWelcomeIntroSequence();
+        });
+    } catch {
+        startWelcomeIntroSequence();
+    }
+
+    // O foco fica por conta da sequência (pra inputs não roubarem foco antes de aparecer).
 }
 
 function computePerTypeStats() {
-    // Group by item+type (TMA comes from the button, but tx also stores it)
+    // Agrupa por item+tipo (TMA vem do botão, mas a transação também guarda).
     const stats = new Map();
     for (const tx of (transactions || [])) {
         const item = String(tx?.item || '');
@@ -797,7 +1132,7 @@ function computePerTypeStats() {
         stats.set(key, prev);
     }
 
-    // Convert sums to means
+    // Converte somas em médias
     for (const [key, s] of stats.entries()) {
         stats.set(key, {
             ...s,
@@ -808,7 +1143,7 @@ function computePerTypeStats() {
     return stats;
 }
 
-function getAssistantRecommendation({ remainingAccounts, avgDiffTarget, guideMode = assistantGuideMode } = {}) {
+function getAssistantRecommendation({ remainingAccounts, avgDiffTarget, guideMode = assistantGuideMode, preferredType = null, preferredItem = null } = {}) {
     const actions = getActionCatalog();
     const stats = computePerTypeStats();
 
@@ -816,17 +1151,18 @@ function getAssistantRecommendation({ remainingAccounts, avgDiffTarget, guideMod
 
     const settings = getGuideModeSettings(guideMode);
 
-    // Score actions by closeness to target, with a small preference for more-sampled types.
+    // Pontua ações pela proximidade do alvo, com leve preferência por tipos com mais amostras.
     const scored = actions.map(a => {
         const s = stats.get(a.key);
         const hasHistory = Boolean(s && s.count);
         const weight = quotaWeightForItem(a.item);
-        const expectedDiffTotal = hasHistory ? s.avgDiff : 0; // neutral fallback if no history
+        const expectedDiffTotal = hasHistory ? s.avgDiff : 0; // sem histórico: neutro
         const expectedDiffPerUnit = expectedDiffTotal / Math.max(1, weight);
         const distance = Math.abs(expectedDiffPerUnit - avgDiffTarget);
         const confidence = hasHistory ? Math.min(1, Math.log10(1 + s.count) / 1.0) : 0; // 0..1
         const unknownPenalty = hasHistory ? 0 : settings.unknownPenalty;
-        const score = distance - (confidence * 90) + unknownPenalty; // bonus up to ~90s for high-sample actions
+        const returnPenalty = (a.type === 'retorno') ? (Number(settings.returnPenalty) || 0) : 0;
+        const score = distance - (confidence * 90) + unknownPenalty + returnPenalty; // bonus up to ~90s for high-sample actions
 
         return {
             ...a,
@@ -846,8 +1182,32 @@ function getAssistantRecommendation({ remainingAccounts, avgDiffTarget, guideMod
     scored.sort((x, y) => x.score - y.score);
     preferred.sort((x, y) => x.score - y.score);
 
-    const best = (preferred[0] || scored[0]);
-    const alternatives = (preferred.length ? preferred : scored).slice(1, 4);
+    const ordered = (preferred.length ? preferred : scored);
+    const bestOverall = (ordered[0] || null);
+
+    let best = bestOverall;
+    const tolerance = 45; // segundos: mantém prático, não força uma escolha pior
+    const wantType = (preferredType === 'conferencia' || preferredType === 'retorno') ? preferredType : null;
+    const wantItem = preferredItem ? String(preferredItem) : null;
+
+    const bestBoth = (wantType && wantItem) ? (ordered.find(a => a.type === wantType && a.item === wantItem) || null) : null;
+    const bestType = wantType ? (ordered.find(a => a.type === wantType) || null) : null;
+    const bestItem = wantItem ? (ordered.find(a => a.item === wantItem) || null) : null;
+
+    const maybePick = (candidate) => {
+        if (!candidate) return false;
+        if (!bestOverall) { best = candidate; return true; }
+        if (candidate.score <= bestOverall.score + tolerance) { best = candidate; return true; }
+        return false;
+    };
+
+    if (!maybePick(bestBoth)) {
+        if (!maybePick(bestType)) {
+            maybePick(bestItem);
+        }
+    }
+
+    const alternatives = ordered.filter(a => !(best && a.key === best.key)).slice(0, 3);
     const targetLabel = avgDiffTarget < 0 ? 'mais rápido' : 'mais devagar';
 
     return {
@@ -859,7 +1219,52 @@ function getAssistantRecommendation({ remainingAccounts, avgDiffTarget, guideMod
     };
 }
 
-function buildGuidePath({ remainingUnits, startBalanceSeconds, guideMode = assistantGuideMode }) {
+function getWorkDayPart(currentSeconds, { shiftStart, shiftEnd, elapsedWorkSeconds, totalWorkSeconds } = {}) {
+    if (!Number.isFinite(currentSeconds)) return { key: 'unknown', label: 'Agora', note: '' };
+
+    if (Number.isFinite(shiftStart) && currentSeconds < shiftStart) {
+        return { key: 'pre', label: 'Pré-turno', note: 'Aquece sem pressa: começa pelo simples e mantém o saldo perto de 00:00:00.' };
+    }
+
+    if (Number.isFinite(shiftEnd) && currentSeconds > shiftEnd) {
+        return { key: 'post', label: 'Pós-turno', note: '' };
+    }
+
+    if (lunchStart && lunchEnd && currentSeconds >= lunchStart && currentSeconds <= lunchEnd) {
+        return { key: 'lunch', label: 'Almoço', note: 'Almoço não conta como produção. Sem culpa: volta no ritmo depois.' };
+    }
+
+    const ratio = (Number.isFinite(elapsedWorkSeconds) && Number.isFinite(totalWorkSeconds) && totalWorkSeconds > 0)
+        ? (elapsedWorkSeconds / totalWorkSeconds)
+        : 0;
+
+    if (ratio < 0.33) return { key: 'early', label: 'Começo do turno', note: 'Pega ritmo no básico: prioriza Conferência. Retorno é raro, então não conta com ele.' };
+    if (ratio < 0.66) return { key: 'mid', label: 'Meio do turno', note: 'Segue no consistente: Conferência como padrão e saldo como “régua” (bem = perto de 00:00:00).' };
+    return { key: 'late', label: 'Final do turno', note: 'Sem inventar: prioriza o que você tem histórico e fecha a meta com consistência.' };
+}
+
+function getPreferredNextAccountType() {
+    // Retorno é raro; não force alternância. Use Conferência como padrão.
+    return 'conferencia';
+}
+
+function getPreferredNextAccountItem() {
+    const actions = getActionCatalog();
+    const items = [...new Set((actions || []).map(a => String(a.item || '')).filter(Boolean))];
+    if (!items.length) return null;
+
+    const last = Array.isArray(transactions)
+        ? [...transactions].reverse().find(t => t && String(t.item || ''))
+        : null;
+    const lastItem = last ? String(last.item || '') : '';
+    if (!lastItem) return items[0];
+
+    const idx = items.indexOf(lastItem);
+    if (idx < 0) return items[0];
+    return items[(idx + 1) % items.length];
+}
+
+function buildGuidePath({ remainingUnits, startBalanceSeconds, guideMode = assistantGuideMode, preferredType = null, preferredItem = null }) {
     const actions = getActionCatalog();
     const stats = computePerTypeStats();
     if (!actions.length) return null;
@@ -871,6 +1276,20 @@ function buildGuidePath({ remainingUnits, startBalanceSeconds, guideMode = assis
     let balance = Number(startBalanceSeconds) || 0;
     const steps = [];
 
+    // Alternância leve entre passos (prático, sem rigidez)
+    // Retornos são raros: trate Conferência como padrão e só puxe Retorno quando for claramente a melhor opção.
+    let wantType = 'conferencia';
+    let wantItem = preferredItem ? String(preferredItem) : null;
+
+    const itemsInCatalog = [...new Set((actions || []).map(a => String(a.item || '')).filter(Boolean))];
+    const nextItem = (current) => {
+        if (!itemsInCatalog.length) return null;
+        if (!current) return itemsInCatalog[0];
+        const idx = itemsInCatalog.indexOf(String(current));
+        if (idx < 0) return itemsInCatalog[0];
+        return itemsInCatalog[(idx + 1) % itemsInCatalog.length];
+    };
+
     for (let i = 0; i < maxSteps && remaining > 0; i += 1) {
         const targetPerUnit = (-balance) / remaining;
 
@@ -881,7 +1300,7 @@ function buildGuidePath({ remainingUnits, startBalanceSeconds, guideMode = assis
                 const weight = quotaWeightForItem(a.item);
                 if (weight > remaining) return null; // avoid overshooting quota units
 
-                // conservative mode: avoid actions without any history when possible
+                // Modo conservador: evita ações sem histórico quando possível
                 const minHistoryCount = Math.max(0, Number(settings.minHistoryCount) || 0);
                 const sampleCount = s?.count || 0;
                 if (minHistoryCount > 0 && sampleCount < minHistoryCount) {
@@ -893,7 +1312,8 @@ function buildGuidePath({ remainingUnits, startBalanceSeconds, guideMode = assis
                 const distance = Math.abs(expectedDiffPerUnit - targetPerUnit);
                 const confidence = hasHistory ? Math.min(1, Math.log10(1 + s.count) / 1.0) : 0;
                 const unknownPenalty = hasHistory ? 0 : settings.unknownPenalty;
-                const score = distance - (confidence * 90) + unknownPenalty;
+                const returnPenalty = (a.type === 'retorno') ? (Number(settings.returnPenalty) || 0) : 0;
+                const score = distance - (confidence * 90) + unknownPenalty + returnPenalty;
 
                 return {
                     ...a,
@@ -909,7 +1329,28 @@ function buildGuidePath({ remainingUnits, startBalanceSeconds, guideMode = assis
             .filter(Boolean)
             .sort((x, y) => x.score - y.score);
 
-        const best = scored[0];
+        const bestOverall = scored[0] || null;
+        let best = bestOverall;
+
+        // Se existe preferência (tipo/item), tenta seguir quando não piora de verdade.
+        const tolerance = 45; // segundos
+        const bestBoth = (wantType && wantItem) ? (scored.find(a => a.type === wantType && a.item === wantItem) || null) : null;
+        const bestType = wantType ? (scored.find(a => a.type === wantType) || null) : null;
+        const bestItem = wantItem ? (scored.find(a => a.item === wantItem) || null) : null;
+
+        const maybePick = (candidate) => {
+            if (!candidate) return false;
+            if (!bestOverall) { best = candidate; return true; }
+            if (candidate.score <= bestOverall.score + tolerance) { best = candidate; return true; }
+            return false;
+        };
+
+        if (!maybePick(bestBoth)) {
+            if (!maybePick(bestType)) {
+                maybePick(bestItem);
+            }
+        }
+
         if (!best) break;
 
         const predictedBalance = balance + best.expectedDiffTotal;
@@ -917,6 +1358,10 @@ function buildGuidePath({ remainingUnits, startBalanceSeconds, guideMode = assis
 
         balance = predictedBalance;
         remaining = Math.max(0, remaining - best.weight);
+
+        // Próximo passo: mantém Conferência como padrão (Retorno é raro).
+        wantType = 'conferencia';
+        wantItem = nextItem(best.item);
     }
 
     if (!steps.length) return null;
@@ -930,7 +1375,7 @@ function buildGuidePath({ remainingUnits, startBalanceSeconds, guideMode = assis
 function updateAssistant() {
     if (!assistantBody) return;
 
-    // Preserve details open state across re-renders (assistant updates frequently)
+    // Mantém o estado do "detalhes" aberto/fechado entre re-renders (atualiza bastante)
     const existingDetails = assistantBody.querySelector('details');
     if (existingDetails) {
         assistantDetailsOpen = existingDetails.open;
@@ -945,6 +1390,8 @@ function updateAssistant() {
     const remainingWorkSeconds = getRemainingWorkSeconds(currentSeconds);
     const elapsedWorkSeconds = getElapsedWorkSeconds(currentSeconds);
     const totalWorkSeconds = getTotalWorkSeconds();
+
+    const dayPart = getWorkDayPart(currentSeconds, { shiftStart, shiftEnd, elapsedWorkSeconds, totalWorkSeconds });
 
     const withinMarginNow = Math.abs(timeBalance) <= BALANCE_MARGIN_SECONDS;
 
@@ -971,7 +1418,7 @@ function updateAssistant() {
         assistantBody.innerHTML = `
             <div class="kpi"><span>Contas</span><span class="value">${done}/${DAILY_QUOTA}</span></div>
             <div class="kpi"><span>Saldo</span><span class="value ${withinMarginNow ? 'ok' : 'warn'}">${formatSignedTime(timeBalance)}</span></div>
-            <div class="muted">Antes do turno. Objetivo: manter o saldo perto de 00:00:00. (Transações: ${doneTx})</div>
+            <div class="muted">Pré-turno. Objetivo: manter o saldo perto de 00:00:00. (Transações: ${doneTx})</div>
         `;
         return;
     }
@@ -980,7 +1427,16 @@ function updateAssistant() {
         assistantBody.innerHTML = `
             <div class="kpi"><span>Contas</span><span class="value">${done}/${DAILY_QUOTA}</span></div>
             <div class="kpi"><span>Saldo</span><span class="value ${withinMarginNow ? 'ok' : 'warn'}">${formatSignedTime(timeBalance)}</span></div>
-            <div class="muted">Quota feita. Agora é só cuidar do saldo. (Transações: ${doneTx})</div>
+            <div class="muted">Meta de contas feita. Agora é só cuidar do saldo. (Transações: ${doneTx})</div>
+        `;
+        return;
+    }
+
+    if (dayPart.key === 'lunch') {
+        assistantBody.innerHTML = `
+            <div class="kpi"><span>Contas</span><span class="value">${done}/${DAILY_QUOTA}</span></div>
+            <div class="kpi"><span>Saldo</span><span class="value ${withinMarginNow ? 'ok' : 'warn'}">${formatSignedTime(timeBalance)}</span></div>
+            <div class="muted"><strong>${dayPart.label}.</strong> ${dayPart.note} (Transações: ${doneTx})</div>
         `;
         return;
     }
@@ -994,7 +1450,7 @@ function updateAssistant() {
     const avgDiffMax = (BALANCE_MARGIN_SECONDS - timeBalance) / remainingAccounts;
     const avgDiffTarget = (-timeBalance) / remainingAccounts;
 
-    // Predict end balance if user keeps current average performance (per quota unit)
+    // Projeta o saldo final se mantiver a média atual (por unidade de meta)
     const diffs = (transactions || []).map(t => Number(t?.difference)).filter(n => Number.isFinite(n));
     const sumDiffSoFar = diffs.length ? diffs.reduce((a, b) => a + b, 0) : 0;
     const unitsDone = done;
@@ -1004,23 +1460,28 @@ function updateAssistant() {
 
     const targetLabel = avgDiffTarget < 0 ? 'mais rápido' : 'mais devagar';
 
-    const reco = getAssistantRecommendation({ remainingAccounts, avgDiffTarget, guideMode: assistantGuideMode });
+    const preferredType = getPreferredNextAccountType();
+    const preferredItem = getPreferredNextAccountItem();
+    const reco = getAssistantRecommendation({ remainingAccounts, avgDiffTarget, guideMode: assistantGuideMode, preferredType, preferredItem });
     trackAssistantRecommendation(reco, avgDiffTarget, remainingAccounts);
-    const guide = buildGuidePath({ remainingUnits: remainingAccounts, startBalanceSeconds: timeBalance, guideMode: assistantGuideMode });
+    const guide = buildGuidePath({ remainingUnits: remainingAccounts, startBalanceSeconds: timeBalance, guideMode: assistantGuideMode, preferredType, preferredItem });
 
     const modeLabel = assistantGuideMode === 'aggressive' ? 'Agressivo' : 'Conservador';
 
+    const preferredTypeLabel = preferredType === 'retorno' ? '🔄 Retorno' : '📋 Conferencia';
+    const preferredItemLabel = preferredItem ? String(preferredItem) : '';
     const guideHtml = (reco && guide) ? `
         <div class="assistant-reco assistant-guide">
-            <div class="assistant-reco__title">Guia do momento</div>
+            <div class="assistant-reco__title">Sugestão prática</div>
             <div class="assistant-guide__controls" aria-label="Modo do guia">
                 <button type="button" class="assistant-guide__modeBtn ${assistantGuideMode === 'conservative' ? 'is-active' : ''}" data-guide-mode="conservative">Conservador</button>
                 <button type="button" class="assistant-guide__modeBtn ${assistantGuideMode === 'aggressive' ? 'is-active' : ''}" data-guide-mode="aggressive">Agressivo</button>
                 <span class="assistant-guide__modeHint muted">Modo: <strong>${modeLabel}</strong></span>
             </div>
             <div class="assistant-guide__subtitle muted">
-                Objetivo: terminar com saldo perto de <strong>00:00:00</strong>.
-                Meta por conta: <strong>${formatSignedTime(avgDiffTarget)}</strong>.
+                <strong>${dayPart.label}.</strong> ${dayPart.note}
+                <br>Próxima na fila: <strong>${preferredItemLabel || 'um tipo diferente'}</strong>. Padrão: <strong>📋 Conferencia</strong>. <span class="muted">(Retorno é raro.)</span>
+                <br>Saldo alvo por conta (pra fechar perto de 00:00:00): <strong>${formatSignedTime(avgDiffTarget)}</strong>.
                 ${showComplexa ? `<span class="assistant-guide__note">(Complexa vale 2 na meta.)</span>` : ''}
             </div>
 
@@ -1049,14 +1510,17 @@ function updateAssistant() {
         </div>
     ` : (reco ? `
         <div class="assistant-reco">
-            <div class="assistant-reco__title">Guia do momento</div>
+            <div class="assistant-reco__title">Sugestão prática</div>
             <div class="assistant-guide__controls" aria-label="Modo do guia">
                 <button type="button" class="assistant-guide__modeBtn ${assistantGuideMode === 'conservative' ? 'is-active' : ''}" data-guide-mode="conservative">Conservador</button>
                 <button type="button" class="assistant-guide__modeBtn ${assistantGuideMode === 'aggressive' ? 'is-active' : ''}" data-guide-mode="aggressive">Agressivo</button>
                 <span class="assistant-guide__modeHint muted">Modo: <strong>${modeLabel}</strong></span>
             </div>
             <div class="assistant-reco__meta muted">
-                Meta por conta: <strong>${formatSignedTime(avgDiffTarget)}</strong>. Ainda não dá pra montar um “caminho” sem histórico suficiente — registre mais algumas contas.
+                <strong>${dayPart.label}.</strong> ${dayPart.note}
+                <br>Próxima na fila: <strong>${preferredItemLabel || 'um tipo diferente'}</strong>. Padrão: <strong>📋 Conferencia</strong>. <span class="muted">(Retorno é raro.)</span>
+                <br>Saldo alvo por conta: <strong>${formatSignedTime(avgDiffTarget)}</strong>.
+                <br>Ainda falta histórico pra montar uma sequência — registra mais algumas contas e segue no básico.
             </div>
         </div>
     ` : '');
@@ -1092,7 +1556,7 @@ function updateAssistant() {
     }
 }
 
-// Make the "Detalhes" expander behave like a stable toggle
+// Faz o "Detalhes" se comportar como um toggle estável
 if (assistantBody) {
     assistantBody.addEventListener('click', (e) => {
         const modeBtn = e.target.closest('.assistant-guide__modeBtn');
@@ -1117,7 +1581,7 @@ if (assistantBody) {
         const details = summary.closest('details');
         if (!details) return;
 
-        // Prevent native toggle; we manage it to persist across re-renders
+        // Evita o toggle nativo; a gente controla pra persistir entre re-renders
         e.preventDefault();
         details.open = !details.open;
         assistantDetailsOpen = details.open;
@@ -1129,14 +1593,41 @@ if (assistantBody) {
     });
 }
 
-    // Salva estado no localStorage
+// =============================================================================
+// Sync com Relatório (Página 2)
+// =============================================================================
+
+let reportLiveChannel = null;
+try {
+    if (typeof BroadcastChannel !== 'undefined') {
+        reportLiveChannel = new BroadcastChannel('tma-compensator');
+    }
+} catch {
+    reportLiveChannel = null;
+}
+
+function notifyReportLiveUpdate(reason) {
+    try {
+        if (!reportLiveChannel) return;
+        reportLiveChannel.postMessage({ type: 'state_updated', reason: String(reason || ''), at: Date.now() });
+    } catch {
+        // ignore
+    }
+}
+
+// =============================================================================
+// Persistência (localStorage)
+// =============================================================================
+
+// Salva estado no localStorage
 function saveState() {
     localStorage.setItem(STORAGE_BAL, String(timeBalance));
     localStorage.setItem(STORAGE_TX, JSON.stringify(transactions));
     localStorage.setItem(STORAGE_PAUSED_WORK, JSON.stringify(pausedWork || {}));
+    notifyReportLiveUpdate('saveState');
 }
 
-    // Carrega estado do localStorage
+// Carrega estado do localStorage
 function loadState() {
     const b = localStorage.getItem(STORAGE_BAL);
     const tx = localStorage.getItem(STORAGE_TX);
@@ -1155,25 +1646,25 @@ function loadState() {
         pausedWork = {};
     }
 
-    // Normalize/migrate paused store to allow multiple paused entries per key
+    // Normaliza/migra o store de pausados pra permitir múltiplas entradas por chave
     pausedWork = normalizePausedWorkStore(pausedWork);
 
-    // Complexa preference (default: hidden unless user opts in)
+    // Preferência de Complexa (padrão: escondida até o usuário ativar)
     showComplexa = cplx === '1';
     if (complexaToggle) complexaToggle.checked = showComplexa;
     if (complexaToggleDebug) complexaToggleDebug.checked = showComplexa;
 
-    // Assistant guide mode preference
+    // Preferência do modo do guia
     if (gm === 'aggressive' || gm === 'conservative') {
         assistantGuideMode = gm;
     }
 
-    // Dark theme preference
+    // Preferência do tema
     darkThemeEnabled = dt === '1';
     if (themeToggle) themeToggle.checked = darkThemeEnabled;
     document.body.classList.toggle('dark-theme', darkThemeEnabled);
 
-    // Shift start preference (default: 08:00)
+    // Preferência do início do turno (padrão: 08:00)
     if (ss !== null && ss !== undefined && String(ss).trim() !== '') {
         const parsed = parseInt(String(ss), 10);
         shiftStartSeconds = normalizeShiftStartSeconds(parsed);
@@ -1187,27 +1678,29 @@ function loadState() {
         lunchEnd = lunch.end;
     }
 
-    // First time (or new setting added): show onboarding prompt
+    // Primeira vez (ou ajuste novo): abre onboarding (travado)
     if (!l || !ss) {
-        openLunchPrompt({ prefill: true });
+        openLunchPrompt({ prefill: true, lock: true });
     }
 
-    // Apply after DOM is ready
+    // Aplica depois que o DOM já existe
     applyComplexaVisibility();
 
-    // Ensure UI reflects paused work state
+    // Garante que a UI reflita o estado de pausados
     updateFlowUI();
 }
 
+// =============================================================================
+// Render/atualizações de UI
+// =============================================================================
 
-    // Atualiza display do saldo
+// Atualiza display do saldo
 function updateBalanceDisplay() {
-
     timeBalance = Number(timeBalance) || 0;
     balanceDisplay.textContent = (timeBalance > 0 ? '+' : '') + secondsToTime(timeBalance);
     
     balanceDisplay.className = 'balance-value';
-    // UX: if within ±10 minutes, it's OK (green); otherwise attention (red)
+    // UX: dentro de ±10 min fica OK (verde); fora disso chama atenção (vermelho)
     if (Math.abs(timeBalance) <= BALANCE_MARGIN_SECONDS) {
         balanceDisplay.classList.add('positive');
     } else {
@@ -1226,7 +1719,7 @@ function updateFlowTmaDisplays() {
         const confTma = confBtn ? (parseInt(confBtn.dataset.tma, 10) || 0) : 0;
         const retTma = retBtn ? (parseInt(retBtn.dataset.tma, 10) || 0) : 0;
 
-        // Ensure element exists
+        // Garante que o elemento exista
         let el = box.querySelector('.flow-tma');
         if (!el) {
             el = document.createElement('div');
@@ -1244,14 +1737,14 @@ function updateFlowTmaDisplays() {
             }
         }
 
-        // Only show meaningful values
+        // Só mostra valores úteis
         const confLabel = confTma ? secondsToTime(confTma) : '--:--:--';
         const retLabel = retTma ? secondsToTime(retTma) : '--:--:--';
         el.textContent = `TMA • Conf: ${confLabel} | Ret: ${retLabel}`;
     });
 }
 
-    // Atualiza UI para flow mode
+// Atualiza UI para flow mode
 function updateFlowUI() {
     updateFlowTmaDisplays();
     const btns = document.querySelectorAll('.btn-action');
@@ -1261,7 +1754,7 @@ function updateFlowUI() {
         const type = btn.dataset.type;
         const originalText = type === 'conferencia' ? '📋 Conferencia' : '🔄 Retorno';
 
-        // Only Flow Mode should alter action button labels to Stop/Retomar.
+        // Só o Flow altera o texto do botão (Parar/Retomar).
         if (!flowMode) {
             btn.textContent = originalText;
             btn.classList.remove('start-btn');
@@ -1270,11 +1763,11 @@ function updateFlowUI() {
             return;
         }
 
-        // Keep label clean; paused entries are managed via the paused list + click prompt.
+        // Mantém label limpo; pausados aparecem na lista + prompt de retomar.
         
-        // Button label per state
+        // Texto do botão conforme o estado
         if (activeTimers[key]) {
-            btn.textContent = 'Stop';
+            btn.textContent = 'Parar';
             btn.classList.add('start-btn');
         } else {
             btn.textContent = originalText;
@@ -1283,7 +1776,7 @@ function updateFlowUI() {
 
         btn.title = '';
 
-        // While a timer is running, lock out all other actions
+        // Com timer rodando, trava os outros botões
         if (activeKey && key !== activeKey) {
             btn.disabled = true;
         } else {
@@ -1317,6 +1810,7 @@ function stopFlowTimerForKey(key, { finalize }) {
     const elapsed = Math.floor((Date.now() - activeTimers[key].start) / 1000);
     const total = base + elapsed;
     delete activeTimers[key];
+    clearPersistedActiveFlowTimer();
 
     ensureAnalytics();
     analytics.flow.timerStops += 1;
@@ -1362,7 +1856,7 @@ function handleFlowTimer(btn, item, type, tma, opts = null) {
         }, (choice) => {
             if (choice !== 'finalize' && choice !== 'paralyze') return;
             stopFlowTimerForKey(activeKey, { finalize: choice === 'finalize' });
-                // Now start the attempted one
+            // Agora inicia a próxima
             handleFlowTimer(btn, item, type, tma, opts);
         });
         return;
@@ -1387,8 +1881,8 @@ function handleFlowTimer(btn, item, type, tma, opts = null) {
         return;
     }
 
-    // Starting a timer while there are paused entries for the same type:
-    // let the user choose between resuming the latest paused or starting a new one.
+    // Ao iniciar um timer com pausados do mesmo tipo:
+    // deixa escolher entre retomar o último pausado ou iniciar um novo.
     if (!resumeEntryId && !forceNew) {
         const pausedCount = getPausedCountForKey(key);
         if (pausedCount > 0) {
@@ -1411,16 +1905,16 @@ function handleFlowTimer(btn, item, type, tma, opts = null) {
         }
     }
 
-    // Start/resume timer
+    // Inicia/retoma timer
     const startTime = Date.now();
     const resumedEntry = forceNew ? null : (resumeEntryId ? getPausedEntryById(key, resumeEntryId) : getLatestPausedEntry(key));
     const baseSeconds = Math.max(0, Math.floor(Number(resumedEntry?.accumulatedSeconds) || 0));
     activeTimers[key] = { start: startTime, baseSeconds, interval: null };
-    btn.textContent = 'Stop';
+    btn.textContent = 'Parar';
     btn.classList.add('start-btn');
 
     if (baseSeconds > 0) {
-        // Remove only the paused entry being resumed (leave other paused entries intact)
+        // Remove só o pausado que está sendo retomado (mantém os outros)
         removePausedEntry(key, resumedEntry?.id || null);
         saveState();
         ensureAnalytics();
@@ -1430,6 +1924,9 @@ function handleFlowTimer(btn, item, type, tma, opts = null) {
     ensureAnalytics();
     analytics.flow.timerStarts += 1;
     logEvent('flow_timer_start', { key, item, type, tma, baseSeconds });
+
+    // Persist that a timer is running (so navigation doesn't "cancel" it)
+    persistActiveFlowTimer();
 
     // Update timer display every 100ms for smooth updates
     activeTimers[key].interval = setInterval(() => {
@@ -1495,14 +1992,14 @@ function updateCurrentTime() {
 
     const hours = Math.floor(remainingSeconds / 3600);
     const minutes = Math.floor((remainingSeconds % 3600) / 60);
-    // UX: keep Turno Atual stable (no seconds)
+    // UX: mantém "Turno Atual" estável (sem segundos)
     const formatted = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
     currentTimeDisplay.textContent = formatted;
 
-    // Check lunch time
+    // Verifica almoço
     const isLunch = lunchStart && lunchEnd && currentSeconds >= lunchStart && currentSeconds < lunchEnd;
 
-    // Turno extra info
+    // Info extra do turno
     if (turnoNow) turnoNow.textContent = secondsToClockHHMM(currentSeconds);
     if (turnoEnd) turnoEnd.textContent = secondsToClockHHMM(shiftEnd);
     if (turnoWorkLeft) turnoWorkLeft.textContent = secondsToHuman(getRemainingWorkSeconds(currentSeconds));
@@ -1513,15 +2010,9 @@ function updateCurrentTime() {
         else if (isLunch) turnoStatus.textContent = 'Em almoço';
         else turnoStatus.textContent = 'Trabalhando';
     }
-    // Flow mode must NOT be active during lunch; lunch mode takes precedence visually
-    if (lunchStyleEnabled && isLunch) {
-        document.body.classList.add('lunch-mode');
-        // force flow off visually
-        document.body.classList.remove('flow-mode');
-    } else {
-        document.body.classList.remove('lunch-mode');
-        document.body.classList.toggle('flow-mode', flowMode);
-    }
+    // Estilo do almoço é só visual: não mexe em Flow/timers.
+    document.body.classList.toggle('lunch-mode', Boolean(lunchStyleEnabled && isLunch));
+    document.body.classList.toggle('flow-mode', Boolean(flowMode));
 
     // Theme is independent from Flow Mode
     document.body.classList.toggle('dark-theme', Boolean(darkThemeEnabled));
@@ -1575,7 +2066,8 @@ function updateDebugInfo(realSeconds, currentSeconds, isLunch) {
         simRangeHint.textContent = `Simulates time from ${secondsToClockHHMM(getShiftStartSeconds())} to ${secondsToClockHHMM(getShiftEndSeconds())} (lunch respected).`;
     }
 }
-    // Logica de Modal (Cringe) 
+
+// Modal de tempo (modo normal, fora do Flow)
 function openModal(item, type, tma, opts = null) {
 
     currentItem = item;
@@ -1589,19 +2081,19 @@ function openModal(item, type, tma, opts = null) {
     const pausedSeconds = Math.max(0, Math.floor(Number(pausedEntry?.accumulatedSeconds) || 0));
     const latestPausedSeconds = getPausedSecondsForKey(key);
 
-    // Only bind the modal to a paused entry when explicitly opened from the paused list.
+    // Só vincula o modal a um pausado quando ele é aberto pela lista de pausados.
     resumePausedContext = (pausedEntry && resumeEntryId)
         ? { key, entryId: String(pausedEntry.id || '') }
         : null;
 
     const pausedInfo = resumePausedContext
-        ? ` • Retomando pausado: ${secondsToTime(pausedSeconds)}`
+        ? ` • Pausado: ${secondsToTime(pausedSeconds)} (digite o tempo adicional)`
         : (pausedCount > 0 ? ` • Pausados em fila: ${pausedCount} (último: ${secondsToTime(latestPausedSeconds)})` : '');
     infoText.textContent = 'TMA: ' + secondsToTime(tma) + pausedInfo;
 
-    // Only prefill time if we're resuming a specific paused entry
-    timeInput.value = resumePausedContext ? secondsToTime(pausedSeconds) : '';
-    timeInput.placeholder = secondsToTime(tma);
+    // Ao retomar, o input é o tempo adicional (o pausado é somado automaticamente).
+    timeInput.value = '';
+    timeInput.placeholder = resumePausedContext ? '00:00:00' : secondsToTime(tma);
     timeInput.focus();
     modal.classList.add('active');
 }
@@ -1613,23 +2105,22 @@ function closeModal() {
     resumePausedContext = null;
 }
 
-    // Adiciona transação ao histórico
+// Adiciona transação ao histórico
 function addTransaction() {
-    const timeSpent = timeToSeconds(timeInput.value);
-    if (timeSpent === null) {
-        alert('Invalid time format. Use HH:MM or HH:MM:SS or minutes (e.g. 12)');
-        return;
-    }
-
     const key = getActionKey(currentItem, currentType);
     const ctxPaused = (resumePausedContext && resumePausedContext.key === key && resumePausedContext.entryId)
         ? getPausedEntryById(key, resumePausedContext.entryId)
         : null;
     const pausedSeconds = ctxPaused ? (Math.max(0, Math.floor(Number(ctxPaused.accumulatedSeconds) || 0))) : 0;
-    if (pausedSeconds > 0 && timeSpent < pausedSeconds) {
-        alert(`O tempo informado (${secondsToTime(timeSpent)}) é menor que o tempo pausado (${secondsToTime(pausedSeconds)}).`);
+
+    const raw = String(timeInput?.value || '').trim();
+    const entered = raw ? timeToSeconds(raw) : (pausedSeconds > 0 ? 0 : null);
+    if (entered === null) {
+        alert('Formato inválido. Use HH:MM, HH:MM:SS ou minutos (ex.: 12)');
         return;
     }
+
+    const timeSpent = pausedSeconds > 0 ? (pausedSeconds + entered) : entered;
 
     // Calcula diferença entre tempo gasto e TMA
     // positivo -> user foi mais lento que TMA (Saldo positivo)
@@ -1675,7 +2166,7 @@ function addTransaction() {
     });
     markRecommendationFollowedIfMatch(tx, 'modal');
 
-    // Resolve ONLY the paused entry being resumed (if any)
+    // Resolve APENAS o pausado que está sendo retomado (se existir)
     if (resumePausedContext && resumePausedContext.key === key && resumePausedContext.entryId) {
         removePausedEntry(key, resumePausedContext.entryId);
         resumePausedContext = null;
@@ -1695,15 +2186,15 @@ function paralyzeFromModal() {
     const existingPaused = ctxPaused ? (Math.max(0, Math.floor(Number(ctxPaused.accumulatedSeconds) || 0))) : getPausedSecondsForKey(key);
     const raw = String(timeInput?.value || '').trim();
     const parsed = raw ? timeToSeconds(raw) : null;
-    const seconds = (parsed !== null) ? parsed : existingPaused;
+    const seconds = (parsed !== null) ? (existingPaused + parsed) : existingPaused;
 
     if (!Number.isFinite(seconds) || seconds < 0) {
         alert('Tempo inválido para paralisar. Use HH:MM:SS ou minutos.');
         return;
     }
 
-    // If we opened the modal to resume a specific paused entry, update that entry.
-    // Otherwise, create a new paused entry.
+    // Se o modal foi aberto para um pausado específico, atualiza essa entrada.
+    // Senão, cria um novo pausado.
     if (resumePausedContext && resumePausedContext.key === key && resumePausedContext.entryId) {
         const ok = updatePausedEntry(key, resumePausedContext.entryId, {
             item: currentItem,
@@ -1713,7 +2204,7 @@ function paralyzeFromModal() {
             updatedAtIso: new Date().toISOString(),
         });
         if (!ok) {
-            // Fallback: create new entry
+            // Plano B: cria uma nova entrada
             setPausedWork(key, { item: currentItem, type: currentType, tma: currentTMA, accumulatedSeconds: seconds });
         }
     } else {
@@ -1728,7 +2219,7 @@ function paralyzeFromModal() {
     closeModal();
 }
 
-    // Atualiza histórico de transações
+// Atualiza histórico de transações
 function updateHistory() {
     const hasTx = Array.isArray(transactions) && transactions.length > 0;
 
@@ -1795,7 +2286,11 @@ function updateHistory() {
     updateAssistant();
 }
 
-// Delete a transaction (misinput safety)
+// =============================================================================
+// Eventos (UI)
+// =============================================================================
+
+// Excluir transação (pra corrigir lançamento errado)
 if (historyContainer) {
     historyContainer.addEventListener('click', (e) => {
         const actionBtn = e.target.closest('button');
@@ -1828,7 +2323,7 @@ if (historyContainer) {
                 logEvent('paused_resume_clicked', { key, item, type, tma, mode: flowMode ? 'flow' : 'default' });
 
                 if (flowMode) {
-                    // Start/resume timer in flow mode
+                    // Retoma/inicia timer no Flow
                     const btn = document.querySelector(`.btn-action[data-item="${CSS.escape(item)}"][data-type="${CSS.escape(type)}"]`);
                     if (btn) {
                         handleFlowTimer(btn, item, type, tma, { resumeEntryId: String(p?.id || entryId || '') });
@@ -1836,7 +2331,7 @@ if (historyContainer) {
                         alert('Não encontrei o botão dessa conta para retomar.');
                     }
                 } else {
-                    // Open modal in default mode
+                    // Abre o modal no modo normal
                     openModal(item, type, tma, { resumeEntryId: String(p?.id || entryId || '') });
                 }
                 return;
@@ -1883,9 +2378,9 @@ function updateAccountsCounter() {
     }
 }
 
-// updateHistory already updates the counter + assistant
+// O updateHistory já atualiza o contador + o guia
 
-// Event Listeners
+// Listeners
 actionBtns.forEach(btn => {
     btn.addEventListener('click', function () {
         const item = this.dataset.item;
@@ -1894,7 +2389,13 @@ actionBtns.forEach(btn => {
         if (flowMode) {
             handleFlowTimer(this, item, type, tma);
         } else {
-            openModal(item, type, tma);
+            const key = getActionKey(item, type);
+            const latest = getLatestPausedEntry(key);
+            if (latest && latest.id) {
+                openModal(item, type, tma, { resumeEntryId: String(latest.id) });
+            } else {
+                openModal(item, type, tma);
+            }
         }
     });
 });
@@ -1905,7 +2406,12 @@ confirmBtn.addEventListener('click', addTransaction);
 if (paralyzeBtn) paralyzeBtn.addEventListener('click', paralyzeFromModal);
 
 document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') closeModal();
+    if (e.key !== 'Escape') return;
+    if (isSidebarOpen()) {
+        setSidebarOpen(false);
+        return;
+    }
+    closeModal();
 });
 
 modal.addEventListener('click', function (e) {
@@ -1916,26 +2422,28 @@ timeInput.addEventListener('keypress', function (e) {
     if (e.key === 'Enter') addTransaction();
 });
 
-timeToggle.addEventListener('change', function () {
-    // Don't allow leaving flow mode with an active timer (avoids hidden running timers)
-    if (!this.checked && getActiveTimerKey()) {
+if (timeToggle) {
+    timeToggle.addEventListener('change', function () {
+        // Não deixa sair do Flow com timer ativo (evita timer rodando escondido)
+        if (!this.checked && getActiveTimerKey()) {
+            ensureAnalytics();
+            analytics.flow.blockedLeaveWithRunning += 1;
+            logEvent('flow_mode_disable_blocked_running_timer', {});
+            alert('Pare o timer atual antes de sair do Flow Mode.');
+            this.checked = true;
+            return;
+        }
+        setFlowModePersisted(this.checked);
+
         ensureAnalytics();
-        analytics.flow.blockedLeaveWithRunning += 1;
-        logEvent('flow_mode_disable_blocked_running_timer', {});
-        alert('Pare o timer atual antes de sair do Flow Mode.');
-        this.checked = true;
-        return;
-    }
-    flowMode = this.checked;
+        if (flowMode) analytics.flow.modeEnabledCount += 1;
+        else analytics.flow.modeDisabledCount += 1;
+        logEvent('flow_mode_set', { enabled: flowMode });
 
-    ensureAnalytics();
-    if (flowMode) analytics.flow.modeEnabledCount += 1;
-    else analytics.flow.modeDisabledCount += 1;
-    logEvent('flow_mode_set', { enabled: flowMode });
-
-    updateFlowUI();
-    updateCurrentTime();
-});
+        updateFlowUI();
+        updateCurrentTime();
+    });
+}
 
 if (themeToggle) {
     themeToggle.addEventListener('change', function () {
@@ -1945,15 +2453,93 @@ if (themeToggle) {
         } catch {
             // ignore
         }
+        notifyReportLiveUpdate('dark_theme_set');
         ensureAnalytics();
         logEvent('dark_theme_set', { enabled: darkThemeEnabled });
         updateCurrentTime();
     });
 }
 
-// Shift simulator events
+// Eventos da sidebar
+if (sidebarToggleBtn) sidebarToggleBtn.addEventListener('click', () => toggleSidebar());
+if (sidebarCloseBtn) sidebarCloseBtn.addEventListener('click', () => setSidebarOpen(false));
+if (sidebarOverlay) sidebarOverlay.addEventListener('click', () => setSidebarOpen(false));
+
+if (sidebarFlowToggle) {
+    sidebarFlowToggle.addEventListener('change', () => {
+        if (timeToggle) {
+            timeToggle.checked = Boolean(sidebarFlowToggle.checked);
+            timeToggle.dispatchEvent(new Event('change'));
+            // Mudança de Flow pode ser bloqueada; re-sync depois do handler
+            syncSidebarControls();
+        } else {
+            flowMode = Boolean(sidebarFlowToggle.checked);
+            updateFlowUI();
+            updateCurrentTime();
+            syncSidebarControls();
+        }
+    });
+}
+
+if (sidebarThemeToggle) {
+    sidebarThemeToggle.addEventListener('change', () => {
+        if (themeToggle) {
+            themeToggle.checked = Boolean(sidebarThemeToggle.checked);
+            themeToggle.dispatchEvent(new Event('change'));
+            syncSidebarControls();
+        } else {
+            darkThemeEnabled = Boolean(sidebarThemeToggle.checked);
+            try {
+                localStorage.setItem(STORAGE_DARK_THEME, darkThemeEnabled ? '1' : '0');
+            } catch {
+                // ignore
+            }
+            notifyReportLiveUpdate('dark_theme_set');
+            ensureAnalytics();
+            logEvent('dark_theme_set', { enabled: darkThemeEnabled, source: 'sidebar' });
+            updateCurrentTime();
+            syncSidebarControls();
+        }
+    });
+}
+
+if (sidebarComplexaToggle) {
+    sidebarComplexaToggle.addEventListener('change', () => {
+        showComplexa = Boolean(sidebarComplexaToggle.checked);
+        try {
+            localStorage.setItem(STORAGE_COMPLEXA, showComplexa ? '1' : '0');
+        } catch {
+            // ignore
+        }
+        notifyReportLiveUpdate('complexa_set');
+        if (complexaToggle) complexaToggle.checked = showComplexa;
+        if (complexaToggleDebug) complexaToggleDebug.checked = showComplexa;
+        applyComplexaVisibility();
+        ensureAnalytics();
+        logEvent('complexa_enabled_set', { enabled: showComplexa, source: 'sidebar' });
+        syncSidebarControls();
+    });
+}
+
+if (sidebarOpenOnboardingBtn) {
+    sidebarOpenOnboardingBtn.addEventListener('click', () => {
+        setSidebarOpen(false);
+        openLunchPrompt({ prefill: true, lock: false });
+    });
+}
+
+if (sidebarExportBtn) {
+    sidebarExportBtn.addEventListener('click', () => {
+        setSidebarOpen(false);
+        if (typeof endWorkDay === 'function') endWorkDay();
+    });
+}
+
+
+
+// Eventos do simulador de turno
 if (simStartBtn) simStartBtn.addEventListener('click', () => {
-    // If no debug time, start at shift start
+    // Se não tiver debugTime, começa no início do turno
     if (debugTime === null) debugTime = getShiftStartSeconds();
     ensureAnalytics();
     analytics.debug.simStartCount += 1;
@@ -1994,7 +2580,6 @@ function resetAll() {
     updateHistory();
 }
 
-if (resetBtn) resetBtn.addEventListener('click', resetAll);
 
     // Finaliza dia de trabalho e exporta dados como JSON
 function endWorkDay() {
@@ -2100,24 +2685,30 @@ function endWorkDay() {
 
 if (endDayBtn) endDayBtn.addEventListener('click', endWorkDay);
 
-// Lunch modal events
+// Eventos do modal de almoço
 if (closeLunchModalBtn) closeLunchModalBtn.addEventListener('click', () => {
-    lunchModal.style.display = 'none';
+    if (lunchModal?.dataset?.locked === '1') return;
+    setLunchModalOpen(false, { focus: false });
 });
 if (lunchConfirmBtn) lunchConfirmBtn.addEventListener('click', () => {
+    if (welcomeOutroRunning) return;
+    try { lunchConfirmBtn.disabled = true; } catch { /* ignore */ }
+
     const shiftTime = String(shiftStartInput?.value || '').trim();
     const lunchTime = String(lunchInput?.value || '').trim();
 
-    // Shift start (optional, defaults to 08:00)
+    // Início do turno (opcional, padrão 08:00)
     if (shiftTime) {
         const parsedShift = parseClockHHMMToSeconds(shiftTime);
         if (parsedShift === null) {
             alert('Formato de horário inválido para início do turno. Use HH:MM');
+            try { lunchConfirmBtn.disabled = false; } catch { /* ignore */ }
             return;
         }
         const max = 24 * 3600 - SHIFT_TOTAL_SECONDS;
         if (parsedShift > max) {
             alert(`Horário de início do turno muito tarde. Use um valor até ${secondsToClockHHMM(max)}.`);
+            try { lunchConfirmBtn.disabled = false; } catch { /* ignore */ }
             return;
         }
         shiftStartSeconds = normalizeShiftStartSeconds(parsedShift);
@@ -2131,24 +2722,29 @@ if (lunchConfirmBtn) lunchConfirmBtn.addEventListener('click', () => {
         // ignore
     }
 
+    notifyReportLiveUpdate('shift_start_set');
+
     ensureAnalytics();
     logEvent('shift_start_set', { shiftStartSeconds: getShiftStartSeconds(), source: 'lunch_modal' });
 
-    // Lunch start (required)
+    // Início do almoço (obrigatório)
     const parsedLunch = parseClockHHMMToSeconds(lunchTime);
     if (parsedLunch === null) {
         alert('Formato de horário inválido. Use HH:MM');
+        try { lunchConfirmBtn.disabled = false; } catch { /* ignore */ }
         return;
     }
     lunchStart = parsedLunch;
-    lunchEnd = lunchStart + 3600; // 1 hour
+    lunchEnd = lunchStart + 3600; // 1 hora
     try {
         localStorage.setItem(STORAGE_LUNCH, JSON.stringify({ start: lunchStart, end: lunchEnd }));
     } catch {
         // ignore
     }
 
-    // Save Complexa preference together with lunch setup
+    notifyReportLiveUpdate('lunch_set');
+
+    // Salva preferência de Complexa junto da configuração do almoço
     if (complexaToggle) {
         showComplexa = Boolean(complexaToggle.checked);
         try {
@@ -2156,26 +2752,28 @@ if (lunchConfirmBtn) lunchConfirmBtn.addEventListener('click', () => {
         } catch {
             // ignore
         }
+        notifyReportLiveUpdate('complexa_set');
         if (complexaToggleDebug) complexaToggleDebug.checked = showComplexa;
         applyComplexaVisibility();
         logEvent('complexa_enabled_set', { enabled: showComplexa, source: 'lunch_modal' });
     }
 
-    lunchModal.style.display = 'none';
-
     analytics.lunch.configuredCount += 1;
     logEvent('lunch_set', { lunchStart, lunchEnd });
 
-    // UI refresh (shift range affects multiple displays)
+    // Atualiza UI (mudança de turno impacta vários displays)
     updateCurrentTime();
+
+    // Roda a animação de saída antes de liberar o app.
+    playWelcomeOutroAndClose();
 });
 
-// Debug: re-open / reset onboarding prompts
+// Debug: reabrir / resetar perguntas iniciais
 if (debugOpenLunchPromptBtn) {
     debugOpenLunchPromptBtn.addEventListener('click', () => {
         ensureAnalytics();
         logEvent('debug_open_lunch_prompt', {});
-        openLunchPrompt({ prefill: true });
+        openLunchPrompt({ prefill: true, lock: false });
     });
 }
 
@@ -2184,7 +2782,7 @@ if (debugResetPromptsBtn) {
         const ok = confirm('Isso vai resetar as perguntas iniciais (almoço e Complexa) e abrir o prompt de novo. Continuar?');
         if (!ok) return;
 
-        // Clear first-run state
+        // Limpa estado da primeira execução
         try {
             localStorage.removeItem(STORAGE_LUNCH);
             localStorage.removeItem(STORAGE_COMPLEXA);
@@ -2198,7 +2796,7 @@ if (debugResetPromptsBtn) {
 
         shiftStartSeconds = DEFAULT_SHIFT_START_SECONDS;
 
-        // Back to default (Complexa hidden) until user opts in again
+        // Volta pro padrão (Complexa escondida) até o usuário ativar de novo
         showComplexa = false;
         if (complexaToggle) complexaToggle.checked = false;
         if (complexaToggleDebug) complexaToggleDebug.checked = false;
@@ -2208,7 +2806,7 @@ if (debugResetPromptsBtn) {
         logEvent('debug_reset_prompts', {});
 
         updateCurrentTime();
-        openLunchPrompt({ prefill: true });
+        openLunchPrompt({ prefill: true, lock: true });
     });
 }
 
@@ -2217,6 +2815,7 @@ if (complexaToggleDebug) {
     complexaToggleDebug.addEventListener('change', () => {
         showComplexa = Boolean(complexaToggleDebug.checked);
         localStorage.setItem(STORAGE_COMPLEXA, showComplexa ? '1' : '0');
+        notifyReportLiveUpdate('complexa_set');
         if (complexaToggle) complexaToggle.checked = showComplexa;
         applyComplexaVisibility();
         ensureAnalytics();
@@ -2266,9 +2865,9 @@ function isTypingTarget(target) {
     return false;
 }
 
-// Toggle debug panel with a browser-safe hotkey.
-// - F2: reliable across browsers (doesn't collide with common shortcuts)
-// - Ctrl+Alt+D: fallback
+// Atalho pra abrir o painel de debug.
+// - F2: costuma funcionar em qualquer navegador (não bate com atalhos comuns)
+// - Ctrl+Alt+D: plano B
 document.addEventListener('keydown', (e) => {
     if (!debugPanel) return;
     if (isTypingTarget(e.target)) return;
@@ -2285,10 +2884,20 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
+// =============================================================================
 // Inicialização
+// =============================================================================
 loadAnalytics();
 loadState();
+restorePersistedFlowMode();
+restorePersistedActiveFlowTimer();
+updateFlowUI();
 updateBalanceDisplay();
 updateHistory();
 updateCurrentTime();
 setInterval(updateCurrentTime, 1000);
+
+// Se o usuário navegar pra fora, mantém o timer persistido.
+window.addEventListener('pagehide', () => {
+    persistActiveFlowTimer();
+});

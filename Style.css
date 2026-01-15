@@ -246,8 +246,215 @@ body .control-header {
 }
 
 .container {
-    max-width: 800px; /* increase width for horizontal */
+    max-width: 800px; /* mais largura pra não ficar apertado */
     margin: 0 auto;
+    position: relative;
+}
+
+/* Página 2: libera mais largura pro relatório (menos rolagem) */
+.container.report-container {
+    max-width: 1320px;
+}
+
+@media (min-width: 1600px) {
+    .container.report-container {
+        max-width: 1480px;
+    }
+}
+
+/* Sidebar toggle button (top-right) */
+.sidebar-toggle-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 44px;
+    height: 44px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: color-mix(in oklab, var(--surface) 75%, transparent);
+    color: var(--text);
+    font-size: 20px;
+    font-weight: 900;
+    cursor: pointer;
+    box-shadow: none;
+    transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), background 0.18s ease, border-color 0.18s ease;
+    z-index: 1800;
+}
+
+.sidebar-toggle-btn:hover {
+    transform: translateY(-1px);
+    background: color-mix(in oklab, var(--card) 92%, transparent);
+    border-color: color-mix(in oklab, var(--text) 12%, var(--border));
+}
+
+/* Sidebar drawer */
+.sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.32);
+    backdrop-filter: blur(4px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.26s ease;
+    z-index: 1700;
+}
+
+.sidebar-overlay.is-open {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: min(360px, 92vw);
+    background: color-mix(in oklab, var(--card) 92%, var(--surface));
+    color: var(--text);
+    border-right: 1px solid var(--border);
+    box-shadow: 10px 0 30px rgba(0, 0, 0, 0.18);
+    transform: translateX(-102%);
+    opacity: 0;
+    transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.22s ease;
+    z-index: 1750;
+    display: flex;
+    flex-direction: column;
+    will-change: transform, opacity;
+}
+
+.sidebar.is-open {
+    transform: translateX(0);
+    opacity: 1;
+}
+
+.sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    background: transparent;
+}
+
+.sidebar-title {
+    font-weight: 900;
+    letter-spacing: 0.2px;
+}
+
+.sidebar-close {
+    background: transparent;
+    border: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    font-size: 28px;
+    line-height: 1;
+    color: var(--muted);
+    cursor: pointer;
+    transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+.sidebar-close:hover {
+    background: color-mix(in oklab, var(--panel) 60%, transparent);
+    color: var(--text);
+    transform: translateY(-1px);
+}
+
+.sidebar-body {
+    padding: 14px 16px;
+    overflow: auto;
+    display: grid;
+    gap: 14px;
+}
+
+/* Minimal, calm sections + subtle entrance */
+.sidebar-body > .sidebar-section {
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 260ms ease, transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.sidebar.is-open .sidebar-body > .sidebar-section {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.sidebar.is-open .sidebar-body > .sidebar-section:nth-child(1) { transition-delay: 60ms; }
+.sidebar.is-open .sidebar-body > .sidebar-section:nth-child(2) { transition-delay: 90ms; }
+
+.sidebar-section {
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    padding: 0;
+}
+
+.sidebar-section-title {
+    font-size: 0.85em;
+    font-weight: 900;
+    color: var(--muted);
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+}
+
+.sidebar-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 0;
+    border-radius: 0;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    background: transparent;
+    color: var(--text);
+    opacity: 0;
+    transform: translateX(-6px);
+    transition: opacity 240ms ease, transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.sidebar.is-open .sidebar-row {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.sidebar.is-open .sidebar-section:nth-child(1) .sidebar-row:nth-of-type(1) { transition-delay: 110ms; }
+.sidebar.is-open .sidebar-section:nth-child(1) .sidebar-row:nth-of-type(2) { transition-delay: 140ms; }
+.sidebar.is-open .sidebar-section:nth-child(1) .sidebar-row:nth-of-type(3) { transition-delay: 170ms; }
+
+.sidebar-action {
+    width: 100%;
+    padding: 12px 12px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text);
+    font-weight: 800;
+    cursor: pointer;
+    transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), background 0.18s ease, border-color 0.18s ease;
+    box-shadow: none;
+    opacity: 0;
+    transform: translateX(-6px);
+}
+
+.sidebar-action:hover {
+    transform: translateY(-1px);
+    background: color-mix(in oklab, var(--panel) 70%, transparent);
+    border-color: color-mix(in oklab, var(--text) 12%, var(--border));
+}
+
+.sidebar.is-open .sidebar-action {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.sidebar.is-open .sidebar-section:nth-child(2) .sidebar-action:nth-of-type(1) { transition-delay: 120ms; }
+.sidebar.is-open .sidebar-section:nth-child(2) .sidebar-action:nth-of-type(2) { transition-delay: 150ms; }
+
+.sidebar-action--danger {
+    border-color: color-mix(in oklab, var(--bad) 40%, var(--border));
 }
 
 
@@ -967,9 +1174,406 @@ input:checked + .slider:before {
     justify-content: flex-end;
 }
 
-/* First prompt (Lunch modal) button polish */
+/* Primeiro prompt (modal de almoço): ajustes finos dos botões */
 #lunchModal .modal-actions {
     justify-content: flex-end;
+}
+
+/* Tela de boas-vindas (primeira vez) */
+#lunchModal {
+    /* Sobrescreve o display padrão do modal pra permitir animação de abrir/fechar */
+    display: flex;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    background: rgba(0, 0, 0, 0.38);
+    backdrop-filter: blur(6px);
+    transition: opacity 420ms ease, visibility 0s linear 420ms;
+}
+
+/* Enquanto a tela de boas-vindas estiver aberta, esconde a UI atrás dela (o modal fica dentro de .container). */
+body.welcome-lock .container > *:not(#lunchModal) {
+    opacity: 0;
+    pointer-events: none;
+    user-select: none;
+    transition: opacity 200ms ease;
+}
+
+body:not(.welcome-lock) .container > *:not(#lunchModal) {
+    opacity: 1;
+    transition: opacity 220ms ease;
+}
+
+#lunchModal.active {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition: opacity 420ms ease, visibility 0s;
+}
+
+#lunchModal .modal-content {
+    max-width: 640px;
+    border-radius: 18px;
+    position: relative;
+    overflow: hidden;
+    animation: none;
+    opacity: 0;
+    transform: translateY(22px) scale(0.96);
+    will-change: transform, opacity;
+    transition: transform 520ms cubic-bezier(0.22, 1, 0.36, 1), opacity 520ms ease;
+}
+
+#lunchModal.active .modal-content {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+}
+
+/* Stage controller for welcome animation */
+/* (Header removed for a cleaner animation-only welcome) */
+
+#lunchModal .modal-body {
+    position: relative;
+    min-height: 360px;
+    padding-top: 16px;
+}
+
+/* Close button sits on the content, not in a header */
+#lunchModal .close-lunch-modal {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    z-index: 2;
+}
+
+#lunchModal .welcome-greeting {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%) translateY(0);
+    opacity: 0;
+    font-weight: 950;
+    font-size: 1.55em;
+    letter-spacing: -0.4px;
+    color: var(--text);
+    text-align: center;
+    will-change: transform, top, opacity, font-size;
+    transition:
+        opacity 460ms ease,
+        top 650ms cubic-bezier(0.22, 1, 0.36, 1),
+        transform 650ms cubic-bezier(0.22, 1, 0.36, 1),
+        font-size 650ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+#lunchModal .welcome-greeting-text {
+    display: inline-block;
+}
+
+/* Success animation (after Começar) */
+#lunchModal .welcome-success {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%) scale(0.92);
+    width: 96px;
+    height: 96px;
+    opacity: 0;
+    pointer-events: none;
+    filter: drop-shadow(0 18px 30px rgba(0,0,0,0.14));
+}
+
+#lunchModal .welcome-success-circle {
+    fill: none;
+    stroke: color-mix(in oklab, var(--accent) 45%, var(--border));
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-dasharray: 160;
+    stroke-dashoffset: 160;
+}
+
+#lunchModal .welcome-success-check {
+    fill: none;
+    stroke: color-mix(in oklab, var(--ok) 70%, var(--text));
+    stroke-width: 5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-dasharray: 60;
+    stroke-dashoffset: 60;
+}
+
+#lunchModal.stage-success .welcome-success {
+    opacity: 1;
+    animation: welcomeSuccessPop 900ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+#lunchModal.stage-success .welcome-success-circle {
+    animation: welcomeStroke 720ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+#lunchModal.stage-success .welcome-success-check {
+    animation: welcomeStroke 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: 180ms;
+}
+
+@keyframes welcomeSuccessPop {
+    0% { transform: translate(-50%, -50%) scale(0.82); opacity: 0; }
+    45% { transform: translate(-50%, -50%) scale(1.04); opacity: 1; }
+    100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+}
+
+@keyframes welcomeStroke {
+    to { stroke-dashoffset: 0; }
+}
+
+#lunchModal.stage-intro .welcome-greeting,
+#lunchModal.stage-form .welcome-greeting,
+#lunchModal.stage-outro .welcome-greeting {
+    opacity: 1;
+}
+
+/* A saudação sobe quando o formulário aparece */
+#lunchModal.stage-form .welcome-greeting {
+    top: clamp(28px, 7vh, 52px);
+    transform: translateX(-50%);
+    font-size: 1.0em;
+    color: var(--muted);
+}
+
+/* Container do formulário: fica escondido até o stage-form */
+#lunchModal .welcome-form {
+    opacity: 0;
+    transform: translateY(8px);
+    pointer-events: none;
+    transition: opacity 320ms ease, transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
+    padding-top: 104px;
+}
+
+#lunchModal.stage-form .welcome-form {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+    transition-delay: 480ms;
+}
+
+#lunchModal.stage-outro .welcome-form {
+    opacity: 0;
+    transform: translateY(8px);
+    pointer-events: none;
+    transition-delay: 0ms;
+}
+
+/* Outro returns greeting to center */
+#lunchModal.stage-outro .welcome-greeting {
+    top: 50%;
+    transform: translate(-50%, -50%) translateY(0);
+    font-size: 1.45em;
+    color: var(--text);
+}
+
+/* During success (checkmark) keep the text a bit higher */
+#lunchModal.stage-success .welcome-greeting {
+    top: 50%;
+    transform: translate(-50%, -50%) translateY(-92px);
+}
+
+/* Collapse effect */
+#lunchModal.is-collapsing {
+    pointer-events: none;
+}
+
+#lunchModal.is-collapsing .modal-content {
+    animation: welcomeCollapse 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    transform-origin: 50% 50%;
+}
+
+@keyframes welcomeCollapse {
+    0% { transform: translateY(0) scale(1, 1); opacity: 1; }
+    55% { transform: translateY(0) scale(0.985, 0.90); opacity: 1; }
+    100% { transform: translateY(0) scale(0.98, 0.02); opacity: 0; }
+}
+
+#lunchModal .modal-content::before,
+#lunchModal .modal-content::after {
+    content: '';
+    position: absolute;
+    width: 420px;
+    height: 420px;
+    border-radius: 999px;
+    filter: blur(28px);
+    opacity: 0.55;
+    pointer-events: none;
+    transform: translate3d(0, 0, 0);
+}
+
+#lunchModal .modal-content::before {
+    top: -260px;
+    left: -240px;
+    background: radial-gradient(circle at 30% 30%, color-mix(in oklab, var(--accent) 75%, transparent), transparent 60%);
+    animation: welcomeBlobA 10s ease-in-out infinite;
+}
+
+#lunchModal .modal-content::after {
+    bottom: -280px;
+    right: -240px;
+    background: radial-gradient(circle at 60% 60%, color-mix(in oklab, var(--accent-strong) 80%, transparent), transparent 60%);
+    animation: welcomeBlobB 12s ease-in-out infinite;
+}
+
+@keyframes welcomeBlobA {
+    0%, 100% { transform: translate(-8px, 0) scale(1); opacity: 0.50; }
+    50% { transform: translate(18px, 22px) scale(1.04); opacity: 0.62; }
+}
+
+@keyframes welcomeBlobB {
+    0%, 100% { transform: translate(10px, 0) scale(1); opacity: 0.50; }
+    50% { transform: translate(-18px, -22px) scale(1.05); opacity: 0.62; }
+}
+
+#lunchModal .modal-header {
+    position: relative;
+    z-index: 1;
+}
+
+#lunchModal .modal-body,
+#lunchModal .modal-actions {
+    position: relative;
+    z-index: 1;
+}
+
+#lunchModal .welcome-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: none;
+    background: color-mix(in oklab, var(--panel) 70%, transparent);
+    color: var(--muted);
+    font-weight: 900;
+    font-size: 0.8em;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+}
+
+#lunchModal .welcome-title {
+    margin-top: 10px;
+    font-weight: 950;
+    font-size: 1.3em;
+    color: var(--text);
+}
+
+#lunchModal .welcome-subtitle {
+    margin-top: 6px;
+    color: var(--muted);
+    font-weight: 650;
+    line-height: 1.25;
+}
+
+#lunchModal .welcome-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+#lunchModal .welcome-card {
+    border-radius: var(--radius-lg);
+    border: none;
+    background: color-mix(in oklab, var(--card) 78%, transparent);
+    box-shadow: none;
+    padding: 12px;
+}
+
+#lunchModal .welcome-card--wide {
+    grid-column: 1 / -1;
+}
+
+#lunchModal .welcome-card-title {
+    font-weight: 900;
+    color: var(--text);
+    margin-bottom: 6px;
+}
+
+#lunchModal .welcome-card-sub {
+    color: var(--muted);
+    font-size: 0.92em;
+    margin-bottom: 10px;
+    line-height: 1.25;
+}
+
+#lunchModal .welcome-label {
+    display: block;
+    font-weight: 850;
+    color: var(--muted);
+    font-size: 0.9em;
+    margin-bottom: 8px;
+}
+
+#lunchModal .welcome-input {
+    width: 100%;
+}
+
+#lunchModal .welcome-check {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+    font-weight: 900;
+    border-radius: var(--radius-md);
+    padding: 10px 10px;
+    border: none;
+    background: color-mix(in oklab, var(--panel) 70%, transparent);
+    margin-bottom: 10px;
+}
+
+#lunchModal .welcome-actions {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: flex-end;
+}
+
+#lunchModal .welcome-actions-hint {
+    width: 100%;
+    color: var(--muted);
+    font-size: 0.85em;
+    line-height: 1.25;
+}
+
+@media (max-width: 720px) {
+    #lunchModal .welcome-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    /* By default, respect reduced-motion. If user forces welcome animations, keep them. */
+    body:not(.force-welcome-animations) #lunchModal .modal-content::before,
+    body:not(.force-welcome-animations) #lunchModal .modal-content::after,
+    body:not(.force-welcome-animations) #lunchModal .welcome-greeting,
+    body:not(.force-welcome-animations) #lunchModal .welcome-success,
+    body:not(.force-welcome-animations) #lunchModal.is-collapsing .modal-content {
+        animation: none !important;
+    }
+
+    body:not(.force-welcome-animations) #lunchModal,
+    body:not(.force-welcome-animations) #lunchModal .modal-content,
+    body:not(.force-welcome-animations) #lunchModal .welcome-greeting,
+    body:not(.force-welcome-animations) #lunchModal .welcome-form,
+    body:not(.force-welcome-animations) #lunchModal .modal-header {
+        transition: none !important;
+    }
+
+    body:not(.force-sidebar-animations) .sidebar-overlay {
+        backdrop-filter: none !important;
+        transition: none !important;
+    }
+    body:not(.force-sidebar-animations) .sidebar,
+    body:not(.force-sidebar-animations) .sidebar-body > .sidebar-section,
+    body:not(.force-sidebar-animations) .sidebar-row,
+    body:not(.force-sidebar-animations) .sidebar-action,
+    body:not(.force-sidebar-animations) .sidebar-toggle-btn {
+        transition: none !important;
+    }
 }
 
 #lunchModal .btn-lunch-confirm {
@@ -1604,7 +2208,8 @@ body.flow-mode.dark-theme:not(.lunch-mode) .control-box:hover {
 .accounts-counter {
     position: fixed;
     top: 16px;
-    left: 16px;
+    right: 16px;
+    left: auto;
     z-index: 3000;
     display: inline-flex;
     align-items: center;
@@ -1624,5 +2229,571 @@ body.flow-mode.dark-theme:not(.lunch-mode) .control-box:hover {
 body.lunch-mode .accounts-counter {
     background: #111 !important;
     color: #fff !important;
+}
+
+/* Debug panel: use theme tokens so it works in dark theme */
+.debug-panel {
+    margin: 20px 0;
+    padding: 12px 14px;
+    background: var(--card);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    font-size: 0.95em;
+}
+
+.debug-panel h3 {
+    margin-bottom: 10px;
+    font-size: 1.05em;
+}
+
+.debug-panel label {
+    color: var(--text);
+}
+
+.debug-panel strong {
+    color: var(--text);
+}
+
+.debug-section {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+}
+
+.debug-hint {
+    margin-top: 6px;
+    font-size: 0.85em;
+    color: var(--muted);
+}
+
+/* Página 2: Relatório */
+.report-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 8px 0 14px;
+}
+
+.report-title {
+    margin: 0;
+    text-align: left;
+}
+
+.report-sub {
+    margin-top: 6px;
+    color: var(--muted);
+    font-size: 0.92em;
+}
+
+.report-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+}
+
+/* Reuse .sidebar-action outside the sidebar without the entrance-hidden state */
+.report-actions .sidebar-action {
+    opacity: 1;
+    transform: none;
+    width: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.report-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 10px;
+}
+
+@media (max-width: 860px) {
+    .report-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.report-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    padding: 12px 12px;
+}
+
+.report-k {
+    color: var(--muted);
+    font-weight: 900;
+    font-size: 0.82em;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+}
+
+.report-v {
+    margin-top: 6px;
+    font-size: 1.3em;
+    font-weight: 950;
+    letter-spacing: -0.2px;
+}
+
+.report-v-sub {
+    font-size: 0.8em;
+    color: var(--muted);
+    font-weight: 900;
+}
+
+.report-h {
+    margin-top: 6px;
+    color: var(--muted);
+    font-size: 0.86em;
+}
+
+.report-two {
+    display: grid;
+    grid-template-columns: 1.1fr 0.9fr;
+    gap: 12px;
+    margin-top: 12px;
+}
+
+@media (max-width: 860px) {
+    .report-two { grid-template-columns: 1fr; }
+}
+
+.report-panel {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+}
+
+.report-panel-head {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in oklab, var(--surface) 85%, transparent);
+}
+
+.report-panel-head h2 {
+    margin: 0;
+    font-size: 1.05em;
+}
+
+.report-panel-body {
+    padding: 12px 14px;
+}
+
+.report-panel-foot {
+    padding: 10px 14px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 0.9em;
+}
+
+.report-muted {
+    color: var(--muted);
+    font-weight: 700;
+}
+
+.report-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.report-row:last-child { border-bottom: none; }
+
+.report-row-title {
+    font-weight: 900;
+}
+
+.report-row-sub {
+    margin-top: 2px;
+    color: var(--muted);
+    font-size: 0.85em;
+}
+
+.report-row-right {
+    font-weight: 950;
+    white-space: nowrap;
+}
+
+.report-subtitle {
+    color: var(--muted);
+    font-weight: 900;
+    letter-spacing: 0.2px;
+    font-size: 0.9em;
+    margin-bottom: 10px;
+}
+
+.report-bar-list { display: grid; gap: 10px; }
+
+.report-bar-row {
+    display: grid;
+    grid-template-columns: 1fr 1.4fr auto;
+    gap: 10px;
+    align-items: center;
+}
+
+.report-bar-label {
+    font-weight: 800;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.report-bar-track {
+    height: 10px;
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--panel) 70%, transparent);
+    overflow: hidden;
+    border: 1px solid var(--border);
+}
+
+.report-bar-fill {
+    height: 100%;
+    background: color-mix(in oklab, var(--accent) 65%, transparent);
+    border-radius: 999px;
+}
+
+.report-bar-value {
+    font-weight: 950;
+    color: var(--muted);
+    min-width: 22px;
+    text-align: right;
+}
+
+.report-table-wrap { overflow: auto; }
+
+.report-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 720px;
+}
+
+.report-table th,
+.report-table td {
+    padding: 10px 10px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+    font-size: 0.95em;
+}
+
+.report-table thead th {
+    position: sticky;
+    top: 0;
+    background: color-mix(in oklab, var(--surface) 90%, transparent);
+    z-index: 1;
+    font-weight: 950;
+}
+
+.report-table td.when {
+    color: var(--muted);
+    font-size: 0.88em;
+    white-space: nowrap;
+}
+
+.report-table td.diff.pos { color: var(--status-positive); font-weight: 950; }
+.report-table td.diff.neg { color: var(--status-negative); font-weight: 950; }
+.report-table td.diff.neu { color: var(--muted); font-weight: 950; }
+
+/* Charts + insight cards */
+.report-chart {
+    width: 100%;
+    height: 260px;
+    display: block;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: color-mix(in oklab, var(--surface) 85%, transparent);
+}
+
+.report-list {
+    display: grid;
+    gap: 10px;
+}
+
+.report-list .report-item {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: color-mix(in oklab, var(--panel) 70%, transparent);
+}
+
+.report-list .report-item.is-clickable {
+    cursor: pointer;
+    transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+}
+
+.report-list .report-item.is-clickable:hover {
+    transform: translateY(-1px);
+    background: color-mix(in oklab, var(--panel) 86%, transparent);
+    border-color: color-mix(in oklab, var(--text) 14%, var(--border));
+}
+
+.report-list .report-item.is-clickable:focus {
+    outline: 2px solid color-mix(in oklab, var(--accent) 55%, transparent);
+    outline-offset: 2px;
+}
+
+.report-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    backdrop-filter: blur(4px);
+    display: grid;
+    place-items: center;
+    padding: 16px;
+    z-index: 5000;
+}
+
+.report-modal {
+    width: min(780px, 96vw);
+    max-height: min(82vh, 720px);
+    overflow: auto;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: var(--shadow-md);
+}
+
+.report-modal-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in oklab, var(--surface) 90%, transparent);
+}
+
+.report-modal-title {
+    font-weight: 950;
+    font-size: 1.1em;
+}
+
+.report-modal-sub {
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 0.92em;
+}
+
+.report-modal-close {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text);
+    font-size: 26px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.report-modal-close:hover {
+    background: color-mix(in oklab, var(--panel) 70%, transparent);
+}
+
+.report-modal-body {
+    padding: 14px 16px;
+    color: var(--text);
+}
+
+.report-modal-body p {
+    margin: 0 0 10px;
+    color: var(--text);
+}
+
+.report-modal-body ul {
+    margin: 0;
+    padding-left: 18px;
+    color: var(--text);
+}
+
+.report-modal-body li {
+    margin: 6px 0;
+    color: var(--text);
+}
+
+.report-pill {
+    flex: 0 0 auto;
+    font-size: 12px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    opacity: .95;
+    line-height: 1.2;
+    font-weight: 950;
+    letter-spacing: 0.1px;
+}
+
+.report-pill.good {
+    border-color: color-mix(in oklab, var(--good) 55%, var(--border));
+    color: var(--good);
+}
+
+.report-pill.warn {
+    border-color: color-mix(in oklab, var(--warn) 55%, var(--border));
+    color: var(--warn);
+}
+
+.report-pill.bad {
+    border-color: color-mix(in oklab, var(--bad) 55%, var(--border));
+    color: var(--bad);
+}
+
+.report-item p {
+    margin: 0;
+    color: var(--text);
+}
+
+/* Mini awards + dayparts */
+.report-awards {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    max-height: min(70vh, 720px);
+    overflow-y: auto;
+    padding-right: 6px;
+}
+
+.report-awards-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+/* Reuse .sidebar-action here too (it is hidden by default outside an open sidebar) */
+.report-awards-head .sidebar-action {
+    opacity: 1;
+    transform: none;
+    white-space: nowrap;
+}
+
+@media (max-width: 860px) {
+    .report-awards { grid-template-columns: 1fr; }
+}
+
+.award-card {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 12px 12px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: color-mix(in oklab, var(--panel) 70%, transparent);
+}
+
+.award-card.is-clickable {
+    cursor: pointer;
+    transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+}
+
+.award-card.is-clickable:hover {
+    transform: translateY(-1px);
+    background: color-mix(in oklab, var(--panel) 86%, transparent);
+    border-color: color-mix(in oklab, var(--text) 14%, var(--border));
+}
+
+.award-card.is-clickable:focus {
+    outline: 2px solid color-mix(in oklab, var(--accent) 55%, transparent);
+    outline-offset: 2px;
+}
+
+.award-card.is-locked {
+    opacity: 0.78;
+}
+
+.award-card.is-locked .award-icon {
+    background: color-mix(in oklab, var(--panel) 75%, transparent);
+    color: var(--muted);
+}
+
+.award-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    display: grid;
+    place-items: center;
+    font-weight: 950;
+    color: var(--text);
+    background: color-mix(in oklab, var(--surface) 82%, transparent);
+    flex: 0 0 auto;
+}
+
+.award-title {
+    font-weight: 950;
+    margin: 0;
+}
+
+.award-desc {
+    margin: 4px 0 0;
+    color: var(--muted);
+    font-size: 0.92em;
+}
+
+.report-dayparts {
+    display: grid;
+    gap: 10px;
+}
+
+.daypart-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    align-items: center;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: color-mix(in oklab, var(--panel) 70%, transparent);
+}
+
+.daypart-row.is-clickable {
+    cursor: pointer;
+    transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+}
+
+.daypart-row.is-clickable:hover {
+    transform: translateY(-1px);
+    background: color-mix(in oklab, var(--panel) 86%, transparent);
+    border-color: color-mix(in oklab, var(--text) 14%, var(--border));
+}
+
+.daypart-row.is-clickable:focus {
+    outline: 2px solid color-mix(in oklab, var(--accent) 55%, transparent);
+    outline-offset: 2px;
+}
+
+.daypart-main { min-width: 0; }
+
+.daypart-title {
+    font-weight: 950;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.daypart-sub {
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 0.9em;
+}
+
+.daypart-score {
+    text-align: right;
+    white-space: nowrap;
+    font-weight: 950;
 }
 

@@ -8,6 +8,7 @@
 </head>
 <body>
     <div class="container">
+        <button id="sidebarToggleBtn" class="sidebar-toggle-btn" type="button" aria-label="Abrir menu" aria-controls="sidebar" aria-expanded="false">☰</button>
         <h1>TMA Compensator</h1>
         
         <div class="top-row">
@@ -18,7 +19,6 @@
                         <span class="balance-value" id="balance">00:00:00</span>
                     </div>
                     <div class="balance-actions">
-                        <button id="resetBtn" class="btn-reset">Resetar</button>
                         <button id="endDayBtn" class="btn-end-day">Finalizar Dia</button>
                     </div>
                 </div>
@@ -36,27 +36,10 @@
                     </div>
                 </div>
             </div>
-            
-            <div class="switch-container">
-                <label class="switch">
-                    <input type="checkbox" id="timeToggle">
-                    <span class="slider"></span>
-                </label>
-                <span class="switch-label">Flow Mode</span>
-            </div>
-
-            <div class="switch-container">
-                <label class="switch">
-                    <input type="checkbox" id="themeToggle">
-                    <span class="slider"></span>
-                </label>
-                <span class="switch-label">Tema escuro</span>
-            </div>
-
             <div class="assistant-section">
                 <div class="account-assistant">
                     <div class="assistant-display">
-                        <span class="assistant-label">Assistente de contas</span>
+                        <span class="assistant-label">Guia de contas</span>
                         <div id="assistantBody" class="assistant-body"></div>
                     </div>
                 </div>
@@ -67,16 +50,16 @@
             Contas feitas: <span id="accountsCount">0</span>
         </div>
         
-        <div class="debug-panel" id="debugPanel" style="display: none; margin: 20px 0; padding: 10px; background: #f0f0f0; border-radius: 8px; font-size: 0.9em;">
+        <div class="debug-panel" id="debugPanel" style="display: none;">
             <h3>Debug Tool</h3>
             <div style="display: flex; gap: 20px; flex-wrap: wrap;">
                 <div>
                     <label>Set Current Time (HH:MM:SS): </label>
-                    <input type="text" id="debugTimeInput" placeholder="08:00:00">
+                    <input type="text" id="debugTimeInput" placeholder="08:00:00" class="time-input">
                     <button id="setDebugTimeBtn">Set Time</button>
                     <button id="resetDebugTimeBtn">Reset to Real Time</button>
 
-                    <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(0,0,0,0.1);">
+                    <div class="debug-section">
                         <strong>Shift Simulator:</strong>
                         <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:8px;">
                             <label style="display:flex; gap:6px; align-items:center;">
@@ -94,12 +77,12 @@
                             <button id="simResetBtn">Stop & Reset</button>
                             <span id="simStatus" style="font-weight:600;">Stopped</span>
                         </div>
-                        <div style="margin-top:6px; font-size:0.85em; color:#555;">
+                        <div class="debug-hint">
                             <span id="simRangeHint">Simulates time from 08:00 to 17:48 (lunch respected).</span>
                         </div>
                     </div>
 
-                    <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(0,0,0,0.1);">
+                    <div class="debug-section">
                         <strong>Preferências:</strong>
                         <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:8px;">
                             <label style="display:flex; gap:8px; align-items:center; font-weight:600;">
@@ -112,7 +95,7 @@
                             <button id="debugOpenLunchPromptBtn">Abrir prompt do almoço</button>
                             <button id="debugResetPromptsBtn">Resetar prompts (1º uso)</button>
                         </div>
-                        <div style="margin-top:6px; font-size:0.85em; color:#555;">
+                        <div class="debug-hint">
                             Use isso para reconfigurar o almoço e refazer as perguntas iniciais.
                         </div>
                     </div>
@@ -216,28 +199,43 @@
             </div>
         </div>
 
-        <div class="modal" id="lunchModal">
+        <div class="modal" id="lunchModal" role="dialog" aria-modal="true" aria-hidden="true">
             <div class="modal-content">
-                <div class="modal-header">
-                    <h2>Configurar Horário de Almoço</h2>
-                    <button class="close-lunch-modal">&times;</button>
-                </div>
+                <button class="close-lunch-modal" type="button" aria-label="Fechar">&times;</button>
                 <div class="modal-body">
-                    <label>Digite o horário de início do turno (HH:MM)</label>
-                    <input type="text" id="shiftStartInput" placeholder="08:00" class="time-input">
-                    <div class="info-text">Isso ajusta o cálculo do seu turno (ex.: quem começa mais cedo).</div>
+                    <div id="welcomeGreeting" class="welcome-greeting" aria-live="polite">
+                        <span class="welcome-greeting-text">Bem-vindo!</span>
+                    </div>
 
-                    <label>Digite o horário de início do almoço (HH:MM)</label>
-                    <input type="text" id="lunchInput" placeholder="12:00" class="time-input">
-                    <div class="info-text">O almoço dura 1 hora e não conta para as horas de trabalho.</div>
+                    <svg class="welcome-success" viewBox="0 0 52 52" aria-hidden="true" focusable="false">
+                        <circle class="welcome-success-circle" cx="26" cy="26" r="24" />
+                        <path class="welcome-success-check" d="M16 27 L23 34 L37 19" />
+                    </svg>
 
-                    <label style="margin-top: 14px; display:flex; gap:10px; align-items:center; justify-content:flex-start; font-weight:700; color: var(--text);">
-                        <input type="checkbox" id="complexaToggle">
-                        <span>Eu faço contas <strong>Complexas</strong></span>
-                    </label>
-                </div>
-                <div class="modal-actions">
-                    <button class="btn-lunch-confirm">Confirm</button>
+                    <div class="welcome-form" aria-label="Configurações iniciais">
+                        <div class="welcome-grid">
+                            <div class="welcome-card">
+                                <label class="welcome-label" for="shiftStartInput">Turno (início)</label>
+                                <input type="text" id="shiftStartInput" placeholder="08:00" class="time-input welcome-input" inputmode="numeric" autocomplete="off">
+                            </div>
+
+                            <div class="welcome-card">
+                                <label class="welcome-label" for="lunchInput">Almoço (início)</label>
+                                <input type="text" id="lunchInput" placeholder="12:00" class="time-input welcome-input" inputmode="numeric" autocomplete="off">
+                            </div>
+
+                            <div class="welcome-card welcome-card--wide">
+                                <label class="welcome-check" style="color: var(--text);">
+                                    <input type="checkbox" id="complexaToggle">
+                                    <span>Mostrar <strong>Complexas</strong></span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="welcome-actions">
+                            <button class="btn-lunch-confirm" type="button">Começar</button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -263,6 +261,51 @@
             </div>
         </div>
     </div>
+
+    <div id="sidebarOverlay" class="sidebar-overlay" aria-hidden="true"></div>
+    <aside id="sidebar" class="sidebar" aria-hidden="true">
+        <div class="sidebar-header">
+            <div class="sidebar-title">Ajustes</div>
+            <button id="sidebarCloseBtn" class="sidebar-close" type="button" aria-label="Fechar menu">&times;</button>
+        </div>
+        <div class="sidebar-body">
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">Modos</div>
+
+                <div class="sidebar-row">
+                    <span>Flow</span>
+                    <label class="switch" style="margin-bottom:0;">
+                        <input type="checkbox" id="sidebarFlowToggle">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+
+                <div class="sidebar-row">
+                    <span>Tema escuro</span>
+                    <label class="switch" style="margin-bottom:0;">
+                        <input type="checkbox" id="sidebarThemeToggle">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+
+                <div class="sidebar-row">
+                    <span>Complexas</span>
+                    <label class="switch" style="margin-bottom:0;">
+                        <input type="checkbox" id="sidebarComplexaToggle">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">Ações</div>
+                <button id="sidebarOpenOnboardingBtn" class="sidebar-action" type="button">Configurar turno / almoço</button>
+                <button id="sidebarExportBtn" class="sidebar-action" type="button">Finalizar dia (Exportar)</button>
+                <a href="page2.html" class="sidebar-action" style="text-decoration:none; display:block; text-align:center;" title="Abrir relatório">Ir para Página 2</a>
+            </div>
+        </div>
+    </aside>
+
     <script src="Script.js"></script>
 </body>
 </html>
