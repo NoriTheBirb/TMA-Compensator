@@ -31,6 +31,7 @@ const STORAGE_PAUSED_WORK = 'tma_comp_paused_work_v1';
 const STORAGE_SHIFT_START = 'tma_comp_shift_start_v1';
 const STORAGE_FLOW_MODE = 'tma_comp_flow_mode_v1';
 const STORAGE_FLOW_ACTIVE_TIMER = 'tma_comp_flow_active_timer_v1';
+const STORAGE_LAST_RESET_DATE = 'tma_comp_last_reset_date_v1';
 
 const ANALYTICS_SCHEMA_VERSION = 1;
 const MAX_ANALYTICS_EVENTS = 2000;
@@ -743,6 +744,7 @@ function createAnalytics() {
             txDeleted: 0,
             resetAll: 0,
             endDayExport: 0,
+            dailyReset: 0,
         },
         assistant: {
             detailsOpens: 0,
@@ -1627,8 +1629,31 @@ function saveState() {
     notifyReportLiveUpdate('saveState');
 }
 
+// Verifica se é um novo dia e reseta os dados diários
+function checkAndResetDailyData() {
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const lastResetDate = localStorage.getItem(STORAGE_LAST_RESET_DATE);
+    
+    if (lastResetDate !== today) {
+        // Novo dia, reseta dados diários
+        timeBalance = 0;
+        transactions = [];
+        pausedWork = {};
+        localStorage.setItem(STORAGE_BAL, '0');
+        localStorage.setItem(STORAGE_TX, '[]');
+        localStorage.setItem(STORAGE_PAUSED_WORK, '{}');
+        localStorage.setItem(STORAGE_LAST_RESET_DATE, today);
+        ensureAnalytics();
+        analytics.counters.dailyReset += 1;
+        logEvent('daily_reset', { date: today });
+    }
+}
+
 // Carrega estado do localStorage
 function loadState() {
+    // Verifica e faz reset diário se necessário
+    checkAndResetDailyData();
+    
     const b = localStorage.getItem(STORAGE_BAL);
     const tx = localStorage.getItem(STORAGE_TX);
     const l = localStorage.getItem(STORAGE_LUNCH);
@@ -2809,6 +2834,35 @@ if (debugResetPromptsBtn) {
         openLunchPrompt({ prefill: true, lock: true });
     });
 }
+
+// Botão para resetar manualmente dados do dia
+const debugResetDailyDataBtn = document.getElementById('debugResetDailyDataBtn');
+if (debugResetDailyDataBtn) {
+    debugResetDailyDataBtn.addEventListener('click', () => {
+        const ok = confirm('Resetar saldo, histórico e pausados de hoje? Essa ação não pode ser desfeita.');
+        if (!ok) return;
+
+        // Reseta dados diários
+        timeBalance = 0;
+        transactions = [];
+        pausedWork = {};
+        localStorage.setItem(STORAGE_BAL, '0');
+        localStorage.setItem(STORAGE_TX, '[]');
+        localStorage.setItem(STORAGE_PAUSED_WORK, '{}');
+        
+        ensureAnalytics();
+        analytics.debug.resetDebugTimeCount = (analytics.debug.resetDebugTimeCount || 0) + 1;
+        logEvent('debug_reset_daily_data', {});
+
+        updateBalanceDisplay();
+        updateHistory();
+        updateFlowUI();
+        accountsCount.textContent = '0';
+        
+        alert('Dados do dia resetados com sucesso!');
+    });
+}
+
 
 // Complexa preference from debug panel
 if (complexaToggleDebug) {
