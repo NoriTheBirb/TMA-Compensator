@@ -1,0 +1,755 @@
+:host { display:block; }
+
+/* Sidebar header extras (global drawer styles come from Style.css) */
+.sidebar-greeting {
+  margin-top: 2px;
+  font-size: 0.92rem;
+  line-height: 1.15;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.sidebar-greeting-name {
+  color: color-mix(in oklab, var(--accent) 65%, var(--text));
+  font-weight: 950;
+  font-size: 1.02em;
+}
+
+.sidebar-mode-pill {
+  margin-top: 8px;
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-weight: 950;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 0.65rem;
+  background: color-mix(in oklab, var(--accent) 18%, var(--card));
+  color: color-mix(in oklab, var(--accent) 55%, var(--text));
+}
+
+.admin-container {
+  max-width: 1200px;
+}
+
+.admin-header {
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.admin-title {
+  margin: 0;
+  font-weight: 950;
+  letter-spacing: -0.4px;
+}
+
+.admin-sub {
+  margin-top: 6px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.admin-actions {
+  display:flex;
+  gap: 10px;
+  align-items:center;
+}
+
+.admin-hint {
+  display:flex;
+  align-items:center;
+  margin-bottom: 12px;
+}
+
+.admin-pill {
+  display:inline-flex;
+  align-items:center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-weight: 900;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  background: color-mix(in oklab, var(--panel, rgba(255,255,255,0.06)) 70%, transparent);
+}
+
+.admin-muted { color: var(--muted); font-weight: 700; }
+
+.admin-error {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: color-mix(in oklab, rgba(239, 68, 68, 0.16) 75%, transparent);
+  color: color-mix(in oklab, #ef4444 75%, #ffffff);
+  font-weight: 850;
+  white-space: pre-line;
+}
+
+.admin-panel {
+  background: var(--card);
+  border-radius: 16px;
+  padding: 10px;
+  box-shadow: 0 18px 55px rgba(15, 23, 42, 0.08);
+}
+
+.admin-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.admin-kpi {
+  background: var(--card);
+  border-radius: 16px;
+  padding: 12px;
+  box-shadow: 0 18px 55px rgba(15, 23, 42, 0.08);
+}
+
+.admin-kpi-label {
+  color: var(--muted);
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 0.62rem;
+}
+
+.admin-kpi-value {
+  margin-top: 6px;
+  font-weight: 980;
+  font-size: 1.25rem;
+}
+
+.admin-kpi-value.ok { color: var(--accent); }
+.admin-kpi-value.bad { color: var(--bad); }
+
+.admin-controls {
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap: 12px;
+  margin: 12px 0;
+}
+
+.admin-field {
+  display:flex;
+  flex-direction:column;
+  gap: 6px;
+  flex: 1;
+  min-width: 240px;
+}
+
+.admin-field-label {
+  color: var(--muted);
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 0.62rem;
+}
+
+.admin-input {
+  border: 1px solid color-mix(in oklab, var(--border, rgba(255,255,255,0.15)) 55%, transparent);
+  background: color-mix(in oklab, var(--surface) 70%, transparent);
+  padding: 10px 12px;
+  border-radius: 12px;
+  color: inherit;
+  font-weight: 850;
+  outline: none;
+}
+
+.admin-input:focus {
+  border-color: color-mix(in oklab, var(--accent) 55%, var(--border, rgba(255,255,255,0.15)));
+}
+
+.admin-check {
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  color: var(--muted);
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.admin-sort {
+  display:flex;
+  align-items:center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content:flex-end;
+}
+
+.admin-sort-btn {
+  border: 1px solid color-mix(in oklab, var(--border, rgba(255,255,255,0.15)) 55%, transparent);
+  background: color-mix(in oklab, var(--surface) 70%, transparent);
+  color: inherit;
+  border-radius: 999px;
+  padding: 8px 10px;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.admin-table {
+  display: grid;
+  gap: 6px;
+}
+
+.admin-row {
+  display:grid;
+  grid-template-columns: 1.4fr 0.5fr 0.6fr 0.9fr 0.7fr;
+  gap: 10px;
+  align-items:center;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--card) 92%, var(--surface));
+}
+
+.admin-row--button {
+  width: 100%;
+  text-align: left;
+  border: none;
+  cursor: pointer;
+}
+
+.admin-row--button:hover {
+  background: color-mix(in oklab, var(--card) 88%, var(--surface));
+  transform: translateY(-1px);
+}
+
+.admin-row--head {
+  background: transparent;
+  border: 1px solid color-mix(in oklab, var(--border, rgba(255,255,255,0.15)) 55%, transparent);
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.65rem;
+  color: var(--muted);
+}
+
+.admin-user-name {
+  font-weight: 950;
+}
+
+.admin-user-sub {
+  margin-top: 4px;
+  display:flex;
+  align-items:center;
+  gap: 8px;
+  color: var(--muted);
+  font-weight: 850;
+  font-size: 0.78rem;
+}
+
+.admin-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--muted) 70%, transparent);
+}
+
+.admin-dot.on {
+  background: color-mix(in oklab, var(--accent) 80%, white);
+  box-shadow: 0 0 0 6px color-mix(in oklab, var(--accent) 18%, transparent);
+}
+
+.admin-num {
+  font-family: 'Courier New', monospace;
+  font-weight: 900;
+}
+
+.admin-diff {
+  font-family: 'Courier New', monospace;
+  font-weight: 950;
+}
+
+.admin-diff.ok { color: var(--accent); }
+.admin-diff.bad { color: var(--bad); }
+
+.admin-last { color: var(--muted); font-weight: 800; }
+
+.admin-empty {
+  padding: 14px;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.admin-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(6px);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding: 16px;
+  z-index: 9999;
+}
+
+.admin-modal {
+  width: min(1050px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  border-radius: 18px;
+  background: var(--card);
+  box-shadow: 0 28px 90px rgba(0,0,0,0.35);
+  padding: 14px;
+}
+
+.admin-modal--small {
+  width: min(720px, calc(100vw - 32px));
+}
+
+/* Broadcast composer: keep actions visible and make the textarea comfortable. */
+.admin-modal--composer {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.admin-modal--composer .admin-modal-scroll {
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.admin-modal--composer textarea.admin-input {
+  min-height: 160px;
+  resize: vertical;
+}
+
+.admin-modal-actions {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.admin-modal--composer .admin-modal-actions {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in oklab, var(--border, rgba(255,255,255,0.15)) 35%, transparent);
+}
+
+.admin-modal-head {
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.admin-modal-title {
+  font-weight: 980;
+  font-size: 1.25rem;
+  letter-spacing: -0.3px;
+}
+
+.admin-modal-sub {
+  margin-top: 6px;
+}
+
+.admin-modal-close {
+  border: 1px solid color-mix(in oklab, var(--border, rgba(255,255,255,0.15)) 55%, transparent);
+  background: color-mix(in oklab, var(--surface) 70%, transparent);
+  color: inherit;
+  border-radius: 12px;
+  padding: 8px 10px;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.admin-modal-kpis {
+  display:grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.admin-visual-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0 0 12px;
+}
+
+.admin-visual-card {
+  background: color-mix(in oklab, var(--card) 92%, var(--surface));
+  border-radius: 16px;
+  padding: 12px;
+  border: 1px solid color-mix(in oklab, var(--border, rgba(255,255,255,0.15)) 35%, transparent);
+}
+
+.admin-visual-title {
+  font-weight: 980;
+  letter-spacing: -0.2px;
+  margin-bottom: 10px;
+}
+
+.admin-stacked {
+  height: 14px;
+  border-radius: 999px;
+  overflow: hidden;
+  display: flex;
+  background: color-mix(in oklab, var(--surface) 70%, transparent);
+  border: 1px solid color-mix(in oklab, var(--border, rgba(255,255,255,0.15)) 35%, transparent);
+}
+
+.admin-stacked .seg { height: 100%; }
+.admin-stacked .seg.accounts { background: color-mix(in oklab, var(--accent) 75%, #22c55e); }
+.admin-stacked .seg.tt { background: color-mix(in oklab, #38bdf8 70%, var(--accent)); }
+.admin-stacked .seg.idle { background: color-mix(in oklab, #f59e0b 75%, #ef4444); }
+
+.admin-visual-legend {
+  margin-top: 10px;
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-weight: 850;
+}
+
+.admin-visual-legend b {
+  color: color-mix(in oklab, var(--text) 78%, var(--muted));
+  font-weight: 950;
+}
+
+.admin-visual-legend .dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+.admin-visual-legend .dot.accounts { background: color-mix(in oklab, var(--accent) 75%, #22c55e); }
+.admin-visual-legend .dot.tt { background: color-mix(in oklab, #38bdf8 70%, var(--accent)); }
+.admin-visual-legend .dot.idle { background: color-mix(in oklab, #f59e0b 75%, #ef4444); }
+
+.admin-meter-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.admin-meter-label {
+  color: var(--muted);
+  font-weight: 900;
+  font-size: 0.85rem;
+}
+
+.admin-meter {
+  height: 12px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in oklab, var(--surface) 70%, transparent);
+  border: 1px solid color-mix(in oklab, var(--border, rgba(255,255,255,0.15)) 35%, transparent);
+}
+
+.admin-meter-fill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.admin-meter-fill.tt { background: color-mix(in oklab, #38bdf8 70%, var(--accent)); }
+.admin-meter-fill.idle { background: color-mix(in oklab, #f59e0b 75%, #ef4444); }
+
+.admin-meter-value {
+  font-family: 'Courier New', monospace;
+  font-weight: 950;
+  color: var(--muted);
+}
+
+.admin-saldo-meter {
+  position: relative;
+  height: 12px;
+  border-radius: 999px;
+  background: linear-gradient(90deg,
+    color-mix(in oklab, #22c55e 35%, transparent),
+    color-mix(in oklab, var(--surface) 70%, transparent),
+    color-mix(in oklab, #ef4444 35%, transparent)
+  );
+  border: 1px solid color-mix(in oklab, var(--border, rgba(255,255,255,0.15)) 35%, transparent);
+}
+
+.admin-saldo-center {
+  position: absolute;
+  left: 50%;
+  top: -3px;
+  width: 2px;
+  height: 18px;
+  background: color-mix(in oklab, var(--muted) 60%, transparent);
+  border-radius: 2px;
+}
+
+.admin-saldo-pos {
+  position: absolute;
+  top: -4px;
+  width: 10px;
+  height: 20px;
+  transform: translateX(-50%);
+  background: color-mix(in oklab, var(--text) 70%, var(--muted));
+  border-radius: 8px;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.25);
+}
+
+.admin-saldo-value {
+  margin-top: 10px;
+  font-weight: 980;
+  font-family: 'Courier New', monospace;
+}
+
+.admin-saldo-sub {
+  margin-top: 6px;
+  color: var(--muted);
+  font-weight: 800;
+  font-size: 0.82rem;
+}
+
+.admin-details {
+  border: 1px solid color-mix(in oklab, var(--border, rgba(255,255,255,0.15)) 35%, transparent);
+  border-radius: 14px;
+  padding: 10px 12px;
+  background: color-mix(in oklab, var(--surface) 65%, transparent);
+}
+
+.admin-details-summary {
+  cursor: pointer;
+  font-weight: 950;
+  color: color-mix(in oklab, var(--text) 78%, var(--muted));
+}
+
+.admin-modal-body {
+  display:grid;
+  grid-template-columns: 0.95fr 1.05fr;
+  gap: 12px;
+}
+
+.admin-modal-col {
+  background: color-mix(in oklab, var(--card) 92%, var(--surface));
+  border-radius: 16px;
+  padding: 12px;
+  border: 1px solid color-mix(in oklab, var(--border, rgba(255,255,255,0.15)) 35%, transparent);
+}
+
+.admin-workhours-canvas {
+  width: 100%;
+  height: 260px;
+  display: block;
+  border-radius: 14px;
+  background: color-mix(in oklab, var(--surface) 65%, transparent);
+  border: 1px solid color-mix(in oklab, var(--border, rgba(255,255,255,0.15)) 35%, transparent);
+}
+
+.admin-chart-legend {
+  margin-top: 10px;
+  max-height: 170px;
+  overflow: auto;
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-weight: 850;
+  font-size: 0.9rem;
+}
+
+.hourly-breakdown {
+  margin-top: 12px;
+  background: color-mix(in oklab, var(--card) 92%, var(--surface));
+  border-radius: 16px;
+  padding: 12px;
+  border: 1px solid color-mix(in oklab, var(--border, rgba(255,255,255,0.15)) 35%, transparent);
+}
+
+.hourly-breakdown-title {
+  font-weight: 980;
+  letter-spacing: -0.2px;
+  margin-bottom: 10px;
+}
+
+.hourly-breakdown-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.hourly-breakdown-table th,
+.hourly-breakdown-table td {
+  padding: 7px 8px;
+  border-bottom: 1px solid color-mix(in oklab, var(--border, rgba(255,255,255,0.15)) 25%, transparent);
+  vertical-align: top;
+}
+
+.hourly-breakdown-table thead th {
+  position: sticky;
+  top: 0;
+  background: color-mix(in oklab, var(--surface) 72%, transparent);
+  z-index: 1;
+  text-align: left;
+  color: var(--muted);
+  font-weight: 950;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-size: 0.62rem;
+}
+
+.hourly-breakdown-table .hour {
+  white-space: nowrap;
+  font-family: 'Courier New', monospace;
+  font-weight: 950;
+}
+
+.hourly-breakdown-table .actions {
+  min-width: 240px;
+  color: var(--muted);
+  font-weight: 850;
+}
+
+.hourly-breakdown-table .muted {
+  opacity: 0.7;
+  font-weight: 850;
+}
+
+.admin-h3 {
+  margin: 0 0 10px;
+  font-weight: 980;
+  letter-spacing: -0.2px;
+}
+
+.admin-chips {
+  display:flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.admin-chip {
+  display:inline-flex;
+  align-items:center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--surface) 65%, transparent);
+  border: 1px solid color-mix(in oklab, var(--border, rgba(255,255,255,0.15)) 40%, transparent);
+  font-weight: 900;
+}
+
+.admin-tx-list {
+  display:grid;
+  gap: 8px;
+}
+
+.admin-tx {
+  padding: 10px 10px;
+  border-radius: 14px;
+  background: color-mix(in oklab, var(--surface) 65%, transparent);
+  border: 1px solid color-mix(in oklab, var(--border, rgba(255,255,255,0.15)) 35%, transparent);
+}
+
+.admin-tx-main {
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap: 10px;
+}
+
+.admin-tx-item {
+  font-weight: 980;
+}
+
+.admin-type {
+  margin-left: 8px;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-weight: 950;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: color-mix(in oklab, var(--text) 78%, var(--muted));
+  background: color-mix(in oklab, var(--panel, rgba(255,255,255,0.06)) 70%, transparent);
+  border: 1px solid color-mix(in oklab, var(--border, rgba(255,255,255,0.15)) 35%, transparent);
+}
+
+.admin-summary {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-weight: 850;
+}
+
+.admin-summary b {
+  color: color-mix(in oklab, var(--text) 78%, var(--muted));
+  font-weight: 950;
+}
+
+.admin-breakdown {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-break-row {
+  padding: 10px;
+  border-radius: 14px;
+  background: color-mix(in oklab, var(--surface) 65%, transparent);
+  border: 1px solid color-mix(in oklab, var(--border, rgba(255,255,255,0.15)) 35%, transparent);
+}
+
+.admin-break-item {
+  font-weight: 980;
+}
+
+.admin-break-meta {
+  margin-top: 6px;
+  color: var(--muted);
+  font-family: 'Courier New', monospace;
+  font-weight: 900;
+}
+
+.admin-tx-time {
+  color: var(--muted);
+  font-weight: 900;
+  font-size: 0.8rem;
+}
+
+.admin-tx-meta {
+  margin-top: 6px;
+  display:flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.admin-mini {
+  font-family: 'Courier New', monospace;
+  font-weight: 950;
+  color: var(--muted);
+}
+
+.admin-mini.ok { color: var(--accent); }
+.admin-mini.bad { color: var(--bad); }
+
+@media (max-width: 860px) {
+  .admin-row {
+    grid-template-columns: 1.2fr 0.5fr 0.6fr 0.9fr;
+  }
+
+  .admin-row > :nth-child(5) {
+    display: none;
+  }
+
+  .admin-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-modal-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-modal-body {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-visual-grid {
+    grid-template-columns: 1fr;
+  }
+}

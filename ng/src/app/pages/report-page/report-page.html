@@ -1,0 +1,168 @@
+<div class="container report-container">
+	<header class="report-header">
+		<div>
+			<h1 class="report-title">Relatório do dia</h1>
+			<div class="report-sub">Resumo do dia + gráficos. Diferença = Gasto - TMA (0 é perfeito; negativo = abaixo do TMA; positivo = acima). Meta do dia: 17 contas. Saldo bom: perto de 00:00:00.</div>
+		</div>
+		<div class="report-actions">
+			<a routerLink="/" class="sidebar-action" style="text-decoration:none;">← Voltar</a>
+			<button id="reportToggleThemeBtn" class="sidebar-action" type="button" (click)="toggleTheme()">Alternar tema</button>
+			<label class="sidebar-action" style="cursor:pointer;">
+				Importar JSON
+				<input id="reportImportInput" #importInput type="file" accept="application/json,.json" style="display:none;" (change)="importJsonFile(importInput)" />
+			</label>
+			<button id="reportExportBtn" class="sidebar-action" type="button" (click)="exportJson()">Exportar JSON</button>
+		</div>
+	</header>
+
+	<div id="reportDatasetHint" class="report-muted" style="margin: 0 0 10px;" [innerHTML]="datasetHintHtml()" (click)="onDatasetHintClick($event)"></div>
+
+	<section class="report-grid">
+		<div class="report-card">
+			<div class="report-k">Saldo</div>
+			<div class="report-v" id="reportBalance">{{ balanceText() }}</div>
+			<div class="report-h">Acumulado de (Gasto - TMA). Bem = dentro de ±10 min (positivo ou negativo).</div>
+		</div>
+		<div class="report-card">
+			<div class="report-k">Contas</div>
+			<div class="report-v" id="reportTxCount">{{ txStats().count }}</div>
+			<div class="report-h">Transações registradas hoje.</div>
+		</div>
+		<div class="report-card">
+			<div class="report-k">Média</div>
+			<div class="report-v" id="reportAvgDiff">{{ avgDiffText() }}</div>
+			<div class="report-h">Média por conta (Gasto - TMA).</div>
+		</div>
+		<div class="report-card">
+			<div class="report-k">Tempo gasto</div>
+			<div class="report-v" id="reportTimeSpent">{{ timeSpentText() }}</div>
+			<div class="report-h">Soma do tempo informado.</div>
+		</div>
+		<div class="report-card">
+			<div class="report-k">Pausados</div>
+			<div class="report-v"><span id="reportPausedCount">{{ pausedStats().count }}</span> <span class="report-v-sub">em fila</span></div>
+			<div class="report-h">Total: <span id="reportPausedTotal">{{ pausedTotalText() }}</span></div>
+		</div>
+		<div class="report-card">
+			<div class="report-k">Timer (Flow)</div>
+			<div class="report-v" id="reportFlowTimer">{{ flowTimerText() }}</div>
+			<div class="report-h" id="reportFlowTimerMeta">{{ flowTimerMetaText() }}</div>
+		</div>
+	</section>
+
+	<section class="report-two">
+		<div class="report-panel">
+			<div class="report-panel-head"><h2>Config</h2></div>
+			<div class="report-panel-body">
+				<div class="report-row">
+					<div class="report-row-main">
+						<div class="report-row-title">Tema</div>
+						<div class="report-row-sub">Salvo em localStorage</div>
+					</div>
+					<div class="report-row-right" id="reportTheme">{{ configThemeText() }}</div>
+				</div>
+				<div class="report-row">
+					<div class="report-row-main">
+						<div class="report-row-title">Complexas</div>
+						<div class="report-row-sub">Preferência do usuário</div>
+					</div>
+					<div class="report-row-right" id="reportComplexa">{{ configComplexaText() }}</div>
+				</div>
+				<div class="report-row">
+					<div class="report-row-main">
+						<div class="report-row-title">Turno</div>
+						<div class="report-row-sub">Início configurado</div>
+					</div>
+					<div class="report-row-right" id="reportShift">{{ configShiftText() }}</div>
+				</div>
+				<div class="report-row">
+					<div class="report-row-main">
+						<div class="report-row-title">Almoço</div>
+						<div class="report-row-sub">Janela salva</div>
+					</div>
+					<div class="report-row-right" id="reportLunch">{{ configLunchText() }}</div>
+				</div>
+			</div>
+		</div>
+
+		<div class="report-panel">
+			<div class="report-panel-head"><h2>Insights</h2></div>
+			<div class="report-panel-body" id="reportTopItems" [innerHTML]="topItemsHtml()"></div>
+		</div>
+	</section>
+
+	<section class="report-two" style="margin-top: 12px;">
+		<div class="report-panel">
+			<div class="report-panel-head"><h2>Gráfico — saldo ao longo do tempo</h2></div>
+			<div class="report-panel-body">
+				<canvas id="reportChartBalance" #balanceCanvas class="report-chart" width="900" height="260" aria-label="Gráfico de saldo acumulado" role="img"></canvas>
+				<div class="report-h" style="margin-top:10px;">Linha do acumulado (Gasto - TMA) na ordem que você registrou.</div>
+			</div>
+		</div>
+
+		<div class="report-panel">
+			<div class="report-panel-head"><h2>Gráfico — distribuição da diferença</h2></div>
+			<div class="report-panel-body">
+				<canvas id="reportChartDiffs" #diffsCanvas class="report-chart" width="900" height="260" aria-label="Gráfico de distribuição das diferenças" role="img"></canvas>
+				<div class="report-h" style="margin-top:10px;">Barras por faixa. Esquerda (verde) = abaixo do TMA. Direita (vermelho) = acima.</div>
+			</div>
+		</div>
+	</section>
+
+	<section class="report-two" style="margin-top: 12px;">
+		<div class="report-panel">
+			<div class="report-panel-head"><h2>Sugestões</h2></div>
+			<div class="report-panel-body" id="reportSuggestions" [innerHTML]="suggestionsHtml()" (click)="onExplainableClick($event)"></div>
+		</div>
+		<div class="report-panel">
+			<div class="report-panel-head"><h2>Estatísticas divertidas</h2></div>
+			<div class="report-panel-body" id="reportFunStats" [innerHTML]="funHtml()" (click)="onExplainableClick($event)"></div>
+		</div>
+	</section>
+
+	<section class="report-two" style="margin-top: 12px;">
+		<div class="report-panel">
+			<div class="report-panel-head"><h2>Mini awards</h2></div>
+			<div class="report-panel-body" id="reportAwards" [innerHTML]="awardsHtml()" (click)="onAwardsClick($event)"></div>
+		</div>
+		<div class="report-panel">
+			<div class="report-panel-head"><h2>Momento do dia</h2></div>
+			<div class="report-panel-body" id="reportDayparts" [innerHTML]="daypartsHtml()" (click)="onExplainableClick($event)"></div>
+		</div>
+	</section>
+
+	<section class="report-panel" style="margin-top: 16px;">
+		<div class="report-panel-head"><h2>Últimas contas</h2></div>
+		<div class="report-panel-body" id="reportRecentTx" [innerHTML]="recentTxHtml()"></div>
+	</section>
+
+	<section class="report-panel" style="margin-top: 16px;">
+		<div class="report-panel-head"><h2>Contas pausadas</h2></div>
+		<div class="report-panel-body" id="reportPausedList" [innerHTML]="pausedListHtml()"></div>
+		<div class="report-panel-foot">
+			Gerencie pausados na página principal.
+			<a routerLink="/" style="color: var(--accent); text-decoration:none; font-weight:800;">Abrir app</a>
+		</div>
+	</section>
+</div>
+
+<div
+	id="reportModalOverlay"
+	class="report-modal-overlay"
+	[class.is-hidden]="!modalOpen()"
+	role="dialog"
+	aria-modal="true"
+	aria-labelledby="reportModalTitle"
+	(click)="closeModal()"
+>
+	<div class="report-modal" role="document" (click)="$event.stopPropagation()">
+		<div class="report-modal-head">
+			<div>
+				<div id="reportModalTitle" class="report-modal-title">{{ modalTitle() }}</div>
+				<div class="report-modal-sub">Explicação rápida do indicador.</div>
+			</div>
+			<button id="reportModalClose" class="report-modal-close" type="button" aria-label="Fechar" (click)="closeModal()">×</button>
+		</div>
+		<div id="reportModalBody" class="report-modal-body" [innerHTML]="modalBodyHtml()"></div>
+	</div>
+</div>

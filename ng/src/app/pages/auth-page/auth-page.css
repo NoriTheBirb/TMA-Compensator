@@ -1,0 +1,139 @@
+:host {
+  display: block;
+}
+
+.auth-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(800px 420px at 15% 10%, rgba(37, 99, 235, 0.18), transparent 55%),
+    radial-gradient(900px 480px at 85% 90%, rgba(96, 165, 250, 0.12), transparent 60%),
+    color-mix(in oklab, var(--bg, #0b1220) 96%, transparent);
+}
+
+.auth-card {
+  width: min(520px, 100%);
+  border-radius: 18px;
+  background: color-mix(in oklab, var(--card, #0f172a) 92%, transparent);
+  border: 1px solid color-mix(in oklab, var(--border, rgba(255,255,255,0.15)) 55%, transparent);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.45);
+  padding: 18px 18px 16px;
+}
+
+.auth-head {
+  text-align: center;
+  padding: 6px 6px 10px;
+}
+
+.auth-badge {
+  display: inline-flex;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  color: color-mix(in oklab, var(--muted, #9aa6b2) 80%, #ffffff);
+  background: color-mix(in oklab, var(--panel, rgba(255,255,255,0.06)) 70%, transparent);
+}
+
+.auth-title {
+  margin: 12px 0 0;
+  font-weight: 950;
+  letter-spacing: -0.5px;
+}
+
+.auth-sub {
+  margin: 8px 0 0;
+  color: color-mix(in oklab, var(--muted, #9aa6b2) 80%, transparent);
+  font-weight: 700;
+}
+
+.auth-form {
+  display: grid;
+  gap: 10px;
+  padding: 10px 6px 6px;
+}
+
+.auth-label {
+  font-weight: 900;
+  color: color-mix(in oklab, var(--muted, #9aa6b2) 82%, transparent);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.68rem;
+  margin-top: 6px;
+}
+
+.auth-input {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in oklab, var(--border, rgba(255,255,255,0.15)) 60%, transparent);
+  background: color-mix(in oklab, var(--surface, rgba(255,255,255,0.04)) 85%, transparent);
+  color: var(--text, #e5e7eb);
+  font-weight: 800;
+}
+
+.auth-input:focus {
+  outline: none;
+  border-color: color-mix(in oklab, var(--accent, #3b82f6) 55%, transparent);
+}
+
+.auth-error {
+  margin-top: 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: color-mix(in oklab, rgba(239, 68, 68, 0.16) 75%, transparent);
+  color: color-mix(in oklab, #ef4444 75%, #ffffff);
+  font-weight: 850;
+  white-space: pre-line;
+}
+
+.auth-success {
+  margin-top: 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: color-mix(in oklab, rgba(34, 197, 94, 0.16) 75%, transparent);
+  color: color-mix(in oklab, #22c55e 72%, #ffffff);
+  font-weight: 850;
+  white-space: pre-line;
+}
+
+.auth-btn {
+  margin-top: 8px;
+  appearance: none;
+  border: none;
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-weight: 950;
+  letter-spacing: 0.02em;
+  color: #fff;
+  cursor: pointer;
+  background: linear-gradient(135deg, var(--accent, #3b82f6), var(--accent-strong, #2563eb));
+  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.22);
+}
+
+.auth-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.auth-link {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: color-mix(in oklab, var(--accent, #3b82f6) 75%, #ffffff);
+  font-weight: 900;
+  padding: 10px 10px;
+  cursor: pointer;
+}
+
+.auth-note {
+  margin-top: 6px;
+  color: color-mix(in oklab, var(--muted, #9aa6b2) 82%, transparent);
+  font-weight: 700;
+  font-size: 0.85rem;
+  line-height: 1.35;
+}

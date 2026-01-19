@@ -1,0 +1,1158 @@
+:host {
+	display: block;
+}
+
+/* When the welcome/onboarding modal is open, hide the underlying app UI. */
+#mainPageContent.onboarding-hidden {
+	opacity: 0;
+	visibility: hidden;
+	pointer-events: none;
+	user-select: none;
+}
+
+/* Onboarding overlay (replaces legacy #lunchModal, but keeps the same look) */
+#onboardingOverlay.onboarding-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 6000;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	opacity: 0;
+	visibility: hidden;
+	pointer-events: none;
+	background: rgba(0, 0, 0, 0.42);
+	backdrop-filter: blur(7px);
+	-webkit-backdrop-filter: blur(7px);
+	transition: opacity 420ms ease, visibility 0s linear 420ms;
+}
+
+#onboardingOverlay.onboarding-overlay.active {
+	opacity: 1;
+	visibility: visible;
+	pointer-events: auto;
+	transition: opacity 420ms ease, visibility 0s;
+}
+
+#onboardingCard.onboarding-card {
+	position: relative;
+	max-width: 860px;
+	width: min(860px, calc(100vw - 28px));
+	min-height: 560px;
+	max-height: calc(100vh - 24px);
+	overflow: hidden;
+	border-radius: 18px;
+	background: var(--card);
+	color: var(--text);
+	border: 1px solid var(--border);
+	box-shadow: 0 28px 90px rgba(0, 0, 0, 0.48);
+	padding: 24px 24px 20px;
+	opacity: 0;
+	transform: translateY(22px) scale(0.96);
+	will-change: transform, opacity;
+	transition: transform 520ms cubic-bezier(0.22, 1, 0.36, 1), opacity 520ms ease;
+}
+
+#onboardingOverlay.onboarding-overlay.active #onboardingCard.onboarding-card {
+	opacity: 1;
+	transform: translateY(0) scale(1);
+}
+
+#onboardingCard.onboarding-card::before,
+#onboardingCard.onboarding-card::after {
+	content: '';
+	position: absolute;
+	width: 420px;
+	height: 420px;
+	border-radius: 999px;
+	filter: blur(28px);
+	opacity: 0.55;
+	pointer-events: none;
+	transform: translate3d(0, 0, 0);
+}
+
+#onboardingCard.onboarding-card::before {
+	top: -260px;
+	left: -240px;
+	background: radial-gradient(circle at 30% 30%, color-mix(in oklab, var(--accent) 75%, transparent), transparent 60%);
+	animation: onboardingBlobA 10s ease-in-out infinite;
+}
+
+#onboardingCard.onboarding-card::after {
+	bottom: -280px;
+	right: -240px;
+	background: radial-gradient(circle at 60% 60%, color-mix(in oklab, var(--accent-strong) 80%, transparent), transparent 60%);
+	animation: onboardingBlobB 12s ease-in-out infinite;
+}
+
+@keyframes onboardingBlobA {
+	0%, 100% {
+		transform: translate(-8px, 0) scale(1);
+		opacity: 0.5;
+	}
+	50% {
+		transform: translate(18px, 22px) scale(1.04);
+		opacity: 0.62;
+	}
+}
+
+@keyframes onboardingBlobB {
+	0%, 100% {
+		transform: translate(10px, 0) scale(1);
+		opacity: 0.5;
+	}
+	50% {
+		transform: translate(-18px, -22px) scale(1.05);
+		opacity: 0.62;
+	}
+}
+
+/* Close button matches the previous modal */
+#onboardingCard .close-lunch-modal {
+	position: absolute;
+	top: 14px;
+	right: 14px;
+	z-index: 2;
+	width: 38px;
+	height: 38px;
+	border-radius: 999px;
+	border: 1px solid var(--border);
+	background: color-mix(in oklab, var(--card) 92%, transparent);
+	color: var(--text);
+	font-size: 26px;
+	line-height: 1;
+	cursor: pointer;
+	transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+#onboardingCard .close-lunch-modal:hover {
+	background: rgba(255, 255, 255, 0.06);
+	color: var(--text);
+	transform: translateY(-1px);
+}
+
+#onboardingCard .close-lunch-modal:active {
+	transform: translateY(0);
+}
+
+/* Layer content above the animated blobs */
+#onboardingCard .welcome-greeting,
+#onboardingCard .welcome-success,
+#onboardingCard .welcome-form {
+	position: relative;
+	z-index: 1;
+}
+
+/* Greeting + form (borrowed structure from the legacy welcome modal) */
+#onboardingCard .welcome-greeting {
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	transform: translate(-50%, -50%) translateY(0);
+	opacity: 0;
+	font-weight: 950;
+	font-size: 1.55em;
+	letter-spacing: -0.4px;
+	color: var(--text);
+	text-align: center;
+	will-change: transform, top, opacity, font-size;
+	transition:
+		opacity 460ms ease,
+		top 650ms cubic-bezier(0.22, 1, 0.36, 1),
+		transform 650ms cubic-bezier(0.22, 1, 0.36, 1),
+		font-size 650ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Safety: never let the overlay render empty while state settles */
+#onboardingOverlay.onboarding-overlay.active #onboardingCard .welcome-greeting {
+	opacity: 1;
+}
+
+#onboardingOverlay.stage-form .welcome-greeting,
+#onboardingOverlay.stage-outro .welcome-greeting {
+	opacity: 1;
+}
+
+/* Greeting moves up when the form is visible */
+#onboardingOverlay.stage-form .welcome-greeting {
+	top: clamp(28px, 7vh, 52px);
+	transform: translateX(-50%);
+	font-size: 1.0em;
+	color: var(--muted);
+}
+
+/* Outro returns greeting to center */
+#onboardingOverlay.stage-outro .welcome-greeting {
+	top: 50%;
+	transform: translate(-50%, -50%) translateY(0);
+	font-size: 1.45em;
+	color: var(--text);
+}
+
+/* During success (checkmark) keep the text a bit higher */
+#onboardingOverlay.stage-success .welcome-greeting {
+	top: 50%;
+	transform: translate(-50%, -50%) translateY(-92px);
+}
+
+#onboardingCard .welcome-success {
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	transform: translate(-50%, -50%) scale(0.92);
+	width: 96px;
+	height: 96px;
+	opacity: 0;
+	pointer-events: none;
+	filter: drop-shadow(0 18px 30px rgba(0, 0, 0, 0.14));
+}
+
+#onboardingOverlay.stage-success #onboardingCard .welcome-success {
+	opacity: 1;
+	animation: onboardingSuccessPop 900ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+#onboardingCard .welcome-success-circle {
+	fill: none;
+	stroke: color-mix(in oklab, var(--accent) 45%, var(--border));
+	stroke-width: 3;
+	stroke-linecap: round;
+	stroke-dasharray: 160;
+	stroke-dashoffset: 160;
+}
+
+#onboardingCard .welcome-success-check {
+	fill: none;
+	stroke: color-mix(in oklab, var(--ok) 70%, var(--text));
+	stroke-width: 5;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	stroke-dasharray: 60;
+	stroke-dashoffset: 60;
+}
+
+#onboardingOverlay.stage-success #onboardingCard .welcome-success-circle {
+	animation: onboardingStroke 720ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+#onboardingOverlay.stage-success #onboardingCard .welcome-success-check {
+	animation: onboardingStroke 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+	animation-delay: 180ms;
+}
+
+@keyframes onboardingSuccessPop {
+	0% {
+		transform: translate(-50%, -50%) scale(0.82);
+		opacity: 0;
+	}
+	45% {
+		transform: translate(-50%, -50%) scale(1.04);
+		opacity: 1;
+	}
+	100% {
+		transform: translate(-50%, -50%) scale(1);
+		opacity: 1;
+	}
+}
+
+@keyframes onboardingStroke {
+	to {
+		stroke-dashoffset: 0;
+	}
+}
+
+/* Form: visible while active, hidden during outro/collapse to prevent overlap */
+#onboardingCard .welcome-form {
+	min-height: 0;
+	padding-top: 104px;
+	padding-left: 6px;
+	padding-right: 6px;
+	display: block;
+	opacity: 0;
+	visibility: hidden;
+	transform: translateY(8px);
+	pointer-events: none;
+	transition:
+		opacity 220ms ease,
+		transform 360ms cubic-bezier(0.22, 1, 0.36, 1),
+		visibility 0s linear 220ms;
+}
+
+#onboardingOverlay.onboarding-overlay.active #onboardingCard .welcome-form {
+	opacity: 1;
+	visibility: visible;
+	transform: translateY(0);
+	pointer-events: auto;
+	transition-delay: 180ms;
+}
+
+/* Force-hide the form immediately during outro/success/collapse (beats .active specificity) */
+#onboardingOverlay.onboarding-overlay.is-outro-running #onboardingCard .welcome-form,
+#onboardingOverlay.onboarding-overlay.stage-outro #onboardingCard .welcome-form,
+#onboardingOverlay.onboarding-overlay.is-collapsing #onboardingCard .welcome-form,
+#onboardingOverlay.onboarding-overlay.stage-success #onboardingCard .welcome-form {
+	display: none;
+	opacity: 0;
+	visibility: hidden;
+	transform: translateY(8px);
+	pointer-events: none;
+	transition-delay: 0ms;
+}
+
+#onboardingCard .welcome-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 12px;
+}
+
+#onboardingCard .welcome-card {
+	background: color-mix(in oklab, var(--card) 78%, transparent);
+	border: none;
+	border-radius: 16px;
+	padding: 12px;
+}
+
+#onboardingCard .welcome-card--wide {
+	grid-column: 1 / -1;
+}
+
+#onboardingCard .welcome-label {
+	display: block;
+	font-weight: 850;
+	margin-bottom: 8px;
+	color: var(--muted);
+	font-size: 0.9em;
+}
+
+#onboardingCard .welcome-input {
+	width: 100%;
+	margin-bottom: 0;
+}
+
+#onboardingCard .welcome-check {
+	display: flex;
+	gap: 10px;
+	align-items: center;
+	font-weight: 900;
+	border-radius: 12px;
+	padding: 10px 10px;
+	border: none;
+	background: color-mix(in oklab, var(--panel) 70%, transparent);
+	margin-bottom: 10px;
+	cursor: pointer;
+}
+
+#onboardingCard .welcome-check input[type='checkbox'] {
+	width: 18px;
+	height: 18px;
+	accent-color: var(--accent);
+}
+
+#onboardingCard .welcome-actions {
+	width: 100%;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	align-items: flex-end;
+	margin-top: 8px;
+}
+
+#onboardingCard .btn-lunch-confirm {
+	appearance: none;
+	border: 1px solid rgba(0, 0, 0, 0.1);
+	border-radius: 12px;
+	padding: 12px 18px;
+	min-width: 160px;
+	font-weight: 800;
+	letter-spacing: 0.2px;
+	color: #fff;
+	background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+	box-shadow: 0 12px 26px rgba(15, 23, 42, 0.18);
+	transition: transform 0.18s ease, filter 0.18s ease, box-shadow 0.18s ease;
+	cursor: pointer;
+}
+
+#onboardingCard .btn-lunch-confirm:hover {
+	filter: brightness(1.03) saturate(1.06);
+	transform: translateY(-1px);
+	box-shadow: 0 16px 34px rgba(15, 23, 42, 0.22);
+}
+
+#onboardingCard .btn-lunch-confirm:active {
+	transform: translateY(0);
+	filter: brightness(0.99);
+	box-shadow: 0 10px 20px rgba(15, 23, 42, 0.18);
+}
+
+#onboardingCard .btn-lunch-confirm:disabled {
+	opacity: 0.6;
+	filter: grayscale(0.1);
+	cursor: not-allowed;
+	transform: none;
+	box-shadow: 0 10px 18px rgba(15, 23, 42, 0.12);
+}
+
+/* Collapse effect (used during outro) */
+#onboardingOverlay.is-collapsing {
+	pointer-events: none;
+}
+
+#onboardingOverlay.is-collapsing #onboardingCard.onboarding-card {
+	animation: onboardingCollapse 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+	transform-origin: 50% 50%;
+}
+
+@keyframes onboardingCollapse {
+	0% {
+		transform: translateY(0) scale(1, 1);
+		opacity: 1;
+	}
+	55% {
+		transform: translateY(0) scale(0.985, 0.9);
+		opacity: 1;
+	}
+	100% {
+		transform: translateY(0) scale(0.98, 0.02);
+		opacity: 0;
+	}
+}
+
+@media (max-width: 560px) {
+	#onboardingCard .welcome-grid {
+		grid-template-columns: 1fr;
+	}
+
+	#onboardingCard.onboarding-card {
+		width: calc(100vw - 20px);
+		padding: 18px 14px 14px;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	/* By default, respect reduced-motion. If user forces welcome animations, keep them. */
+	body:not(.force-welcome-animations) #onboardingCard.onboarding-card::before,
+	body:not(.force-welcome-animations) #onboardingCard.onboarding-card::after,
+	body:not(.force-welcome-animations) #onboardingCard .welcome-greeting,
+	body:not(.force-welcome-animations) #onboardingCard .welcome-success,
+	body:not(.force-welcome-animations) #onboardingOverlay.is-collapsing #onboardingCard.onboarding-card {
+		animation: none !important;
+	}
+
+	body:not(.force-welcome-animations) #onboardingOverlay.onboarding-overlay,
+	body:not(.force-welcome-animations) #onboardingCard.onboarding-card,
+	body:not(.force-welcome-animations) #onboardingCard .welcome-greeting,
+	body:not(.force-welcome-animations) #onboardingCard .welcome-form {
+		transition: none !important;
+	}
+}
+
+/* Smooth transitions when toggling light/dark theme */
+.time-balance,
+.current-time,
+.guide-card,
+.mini-kpi,
+.guide-details,
+.quota-chip,
+.topbar-link,
+.icon-btn,
+.btn-primary-pill,
+.btn-action,
+.control-box,
+.sidebar,
+.sidebar-overlay {
+	transition:
+		background-color 220ms ease,
+		background 220ms ease,
+		color 220ms ease,
+		border-color 220ms ease,
+		box-shadow 220ms ease,
+		opacity 220ms ease,
+		transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Wider, centered layout like the screenshot */
+.container {
+	max-width: 1200px;
+	padding: 18px 18px 40px;
+}
+
+/* Minimal top bar */
+.app-topbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 14px;
+	padding: 6px 2px;
+	margin-bottom: 26px;
+	background: transparent;
+	border: none;
+	box-shadow: none;
+}
+
+.app-topbar-left {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.brand-icon {
+	width: 34px;
+	height: 34px;
+	border-radius: 999px;
+	background: radial-gradient(circle at 30% 30%, #60a5fa, #2563eb);
+	box-shadow: 0 10px 24px color-mix(in oklab, var(--accent) 28%, transparent);
+}
+
+.app-title {
+	margin: 0;
+	text-align: left;
+	font-size: 0.95rem;
+	line-height: 1.2;
+	font-weight: 800;
+}
+
+.app-topbar-right {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 10px;
+}
+
+.quota-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	border-radius: 999px;
+	border: none;
+	background: color-mix(in oklab, var(--card) 92%, var(--surface));
+	color: var(--text);
+	box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+	white-space: nowrap;
+}
+
+.quota-chip--tt {
+	background: color-mix(in oklab, var(--accent) 18%, var(--card));
+	box-shadow: 0 10px 24px color-mix(in oklab, var(--accent) 18%, transparent);
+}
+
+.quota-chip-k {
+	color: var(--muted);
+	font-size: 0.78rem;
+	font-weight: 800;
+	letter-spacing: 0.2px;
+}
+
+.quota-chip-v {
+	font-size: 0.8rem;
+	font-weight: 900;
+}
+
+.icon-btn {
+	width: 38px;
+	height: 38px;
+	border-radius: 999px;
+	border: none;
+	background: color-mix(in oklab, var(--card) 92%, var(--surface));
+	color: var(--text);
+	font-weight: 900;
+	cursor: pointer;
+	box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+}
+
+.icon-btn:hover {
+	transform: translateY(-1px);
+}
+
+.topbar-link {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	height: 38px;
+	padding: 0 14px;
+	border-radius: 999px;
+	border: none;
+	background: color-mix(in oklab, var(--card) 92%, var(--surface));
+	color: var(--text);
+	text-decoration: none;
+	font-weight: 900;
+	font-size: 0.8rem;
+	letter-spacing: 0.02em;
+	box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+}
+
+.topbar-link:hover {
+	transform: translateY(-1px);
+}
+
+/* Hero cards */
+.top-row {
+	gap: 22px;
+	margin-bottom: 28px;
+}
+
+.time-row {
+	gap: 22px;
+}
+
+.time-balance,
+.current-time {
+	border-radius: 16px;
+	padding: 28px;
+	box-shadow: 0 18px 55px rgba(15, 23, 42, 0.08);
+	border: none;
+}
+
+.balance-label,
+.time-label {
+	text-transform: uppercase;
+	letter-spacing: 0.14em;
+	font-size: 0.7rem;
+}
+
+.balance-value {
+	font-size: 3.2rem;
+	letter-spacing: 3px;
+	color: var(--text);
+}
+
+/* Green only when within the allowed balance margin ("margem"). */
+.balance-value.neutral {
+	color: var(--accent);
+}
+
+/* Outside the margin: show warning colors (not green). */
+.balance-value.positive {
+	color: var(--bad);
+}
+
+.balance-value.negative {
+	color: var(--bad);
+}
+
+.balance-actions {
+	margin-top: 14px;
+	display: flex;
+	justify-content: center;
+}
+
+.btn-primary-pill {
+	padding: 12px 18px;
+	border-radius: 999px;
+	background: color-mix(in oklab, var(--card) 88%, var(--surface));
+	border: none;
+	color: var(--text);
+	font-weight: 900;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+}
+
+.btn-primary-pill:hover {
+	background: color-mix(in oklab, var(--card) 80%, var(--surface));
+	transform: translateY(-1px);
+}
+
+.btn-mini-pill {
+	padding: 8px 12px;
+	border-radius: 999px;
+	background: color-mix(in oklab, var(--card) 88%, var(--surface));
+	border: 1px solid color-mix(in oklab, var(--border, rgba(255,255,255,0.15)) 40%, transparent);
+	color: var(--text);
+	font-weight: 900;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	font-size: 0.62rem;
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.btn-mini-pill:hover {
+	background: color-mix(in oklab, var(--card) 80%, var(--surface));
+	transform: translateY(-1px);
+}
+
+.card-head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 12px;
+	margin-bottom: 8px;
+}
+
+.time-value {
+	font-size: 2.2rem;
+	letter-spacing: 1px;
+}
+
+/* Guide section (Guia de contas) */
+.assistant-section {
+	margin-top: 18px;
+}
+
+.guide-card {
+	background: var(--card);
+	box-shadow: 0 18px 55px rgba(15, 23, 42, 0.08);
+	border: none;
+	border-radius: 16px;
+	padding: 18px;
+}
+
+.guide-head {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 16px;
+	padding: 0;
+	margin-bottom: 12px;
+}
+
+.guide-title {
+	text-transform: uppercase;
+	letter-spacing: 0.14em;
+	font-size: 0.7rem;
+	font-weight: 900;
+	color: var(--muted);
+}
+
+.guide-sub {
+	margin-top: 4px;
+	font-size: 0.85rem;
+	color: var(--muted);
+	font-weight: 700;
+}
+
+.guide-need {
+	text-align: right;
+}
+
+.guide-need-k {
+	text-transform: uppercase;
+	letter-spacing: 0.14em;
+	font-size: 0.62rem;
+	font-weight: 900;
+	color: var(--muted);
+}
+
+.guide-need-v {
+	font-size: 0.95rem;
+	font-weight: 900;
+	color: var(--text);
+}
+
+.guide-progress {
+	height: 4px;
+	border-radius: 999px;
+	background: color-mix(in oklab, var(--border) 55%, transparent);
+	overflow: hidden;
+	margin: 12px 0 16px;
+}
+
+.guide-progress-bar {
+	height: 100%;
+	width: 0;
+	background: var(--accent);
+	border-radius: 999px;
+}
+
+.guide-kpis {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	gap: 14px;
+	margin-top: 2px;
+}
+
+.mini-kpi {
+	background: color-mix(in oklab, var(--card) 92%, var(--surface));
+	border: none;
+	border-radius: 14px;
+	padding: 14px 16px;
+	box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+}
+
+.mini-k {
+	text-transform: uppercase;
+	letter-spacing: 0.14em;
+	font-size: 0.62rem;
+	font-weight: 900;
+	color: color-mix(in oklab, var(--muted) 75%, transparent);
+}
+
+.mini-v {
+	margin-top: 6px;
+	font-family: 'Courier New', monospace;
+	font-size: 1.05rem;
+	font-weight: 900;
+	color: var(--text);
+}
+
+.mini-v.ok {
+	color: var(--accent);
+}
+
+.mini-v.warn {
+	color: var(--bad);
+}
+
+.guide-details {
+	margin-top: 14px;
+	border-radius: 14px;
+	border: none;
+	background: color-mix(in oklab, var(--card) 96%, var(--surface));
+	box-shadow: 0 14px 42px rgba(15, 23, 42, 0.06);
+	overflow: hidden;
+}
+
+.guide-details summary {
+	list-style: none;
+	cursor: pointer;
+	user-select: none;
+	padding: 12px 14px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	font-weight: 900;
+	text-transform: uppercase;
+	letter-spacing: 0.12em;
+	font-size: 0.72rem;
+	color: color-mix(in oklab, var(--muted) 78%, transparent);
+}
+
+.guide-details summary::-webkit-details-marker {
+	display: none;
+}
+
+.guide-details summary::after {
+	content: '▾';
+	font-size: 0.9rem;
+	color: color-mix(in oklab, var(--muted) 80%, transparent);
+	transition: transform 140ms ease;
+}
+
+.guide-details[open] summary::after {
+	transform: rotate(180deg);
+}
+
+.guide-details summary:hover {
+	background: color-mix(in oklab, var(--card) 90%, var(--surface));
+}
+
+.guide-details summary:focus-visible {
+	outline: 2px solid color-mix(in oklab, var(--accent) 55%, transparent);
+	outline-offset: 2px;
+	border-radius: 12px;
+}
+
+.details-grid {
+	border-top: 1px solid color-mix(in oklab, var(--border) 25%, transparent);
+	padding: 14px;
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 12px;
+}
+
+.details-grid .kpi {
+	background: color-mix(in oklab, var(--card) 92%, var(--surface));
+	border: none;
+	border-radius: 12px;
+	padding: 12px;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.details-grid .kpi > span:first-child {
+	color: color-mix(in oklab, var(--muted) 82%, transparent);
+	font-weight: 900;
+	font-size: 0.68rem;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+
+.details-grid .kpi .value {
+	font-family: 'Courier New', monospace;
+	font-weight: 900;
+	color: var(--text);
+}
+
+.details-grid .kpi .value.ok {
+	color: var(--accent);
+}
+
+.details-grid .kpi .value.warn {
+	color: var(--bad);
+}
+
+.details-grid .muted {
+	grid-column: 1 / -1;
+	color: var(--muted);
+	font-weight: 700;
+	font-size: 0.86rem;
+	line-height: 1.35;
+}
+
+/* Account cards */
+.control-section {
+	background: transparent;
+	box-shadow: none;
+}
+
+.control-header {
+	padding: 0 2px 12px;
+	background: transparent;
+	border: none;
+}
+
+.control-tabs {
+	display: inline-flex;
+	gap: 8px;
+	align-items: center;
+}
+
+.control-tab {
+	border: 1px solid color-mix(in oklab, var(--border, rgba(255,255,255,0.15)) 55%, transparent);
+	background: color-mix(in oklab, var(--card) 92%, var(--surface));
+	color: var(--text);
+	border-radius: 999px;
+	padding: 8px 12px;
+	font-weight: 950;
+	cursor: pointer;
+	box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+}
+
+.control-tab.active {
+	background: color-mix(in oklab, var(--accent) 16%, var(--card));
+	border-color: color-mix(in oklab, var(--accent) 40%, var(--border, rgba(255,255,255,0.15)));
+}
+
+.control-header h2 {
+	text-transform: uppercase;
+	letter-spacing: 0.14em;
+	font-size: 0.75rem;
+	font-weight: 900;
+	color: var(--muted);
+}
+
+.control-grid {
+	padding: 0;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 18px;
+}
+
+.control-box {
+	border-radius: 16px;
+	padding: 18px 18px 16px;
+	box-shadow: 0 18px 55px rgba(15, 23, 42, 0.08);
+	border: none;
+	background: color-mix(in oklab, var(--card) 96%, var(--surface));
+}
+
+/* Flow mode: compact TMA pills inside each account card */
+.tma-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-top: 10px;
+}
+
+.tma-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 10px;
+	border-radius: 999px;
+	border: none;
+	background: color-mix(in oklab, var(--card) 82%, var(--surface));
+	box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+	color: color-mix(in oklab, var(--muted) 82%, var(--text));
+	font-weight: 900;
+	font-size: 0.74rem;
+	letter-spacing: 0.02em;
+}
+
+.control-box:hover {
+	transform: translateY(-2px);
+}
+
+.box-actions {
+	gap: 10px;
+	justify-content: space-between;
+}
+
+.btn-action {
+	border-radius: 999px;
+	background: color-mix(in oklab, var(--card) 88%, var(--surface));
+	border: none;
+	color: var(--text);
+	padding: 10px 16px;
+	font-weight: 900;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+}
+
+.btn-action:hover {
+	background: color-mix(in oklab, var(--card) 80%, var(--surface));
+}
+
+/* Safety: prevent any accidental “dim overlay” unless sidebar is actually open */
+#sidebarOverlay.sidebar-overlay {
+	opacity: 0;
+	visibility: hidden;
+	pointer-events: none;
+	transition: opacity 220ms ease, visibility 0s linear 220ms;
+}
+
+#sidebarOverlay.sidebar-overlay.is-open {
+	opacity: 1;
+	visibility: visible;
+	pointer-events: auto;
+	transition: opacity 220ms ease, visibility 0s;
+}
+
+/* Ensure sidebar drawer animates in/out (even if global styles change) */
+#sidebar.sidebar {
+	transform: translateX(-102%);
+	opacity: 0;
+	will-change: transform, opacity;
+}
+
+#sidebar.sidebar.is-open {
+	transform: translateX(0);
+	opacity: 1;
+}
+
+/* Floating settings button (matches screenshot bottom-right gear) */
+.floating-settings-btn {
+	position: fixed;
+	right: 12px;
+	top: 12px;
+	width: 54px;
+	height: 54px;
+	border-radius: 999px;
+	border: none;
+	background: color-mix(in oklab, var(--card) 92%, var(--surface));
+	box-shadow: 0 18px 50px rgba(15, 23, 42, 0.18);
+	color: var(--text);
+	font-size: 22px;
+	font-weight: 900;
+	cursor: pointer;
+	z-index: 1850;
+}
+
+.floating-settings-btn:hover {
+	transform: translateY(-1px);
+}
+
+/* Auth greeting in the sidebar header */
+.sidebar-greeting {
+	margin-top: 2px;
+	font-size: 0.92rem;
+	line-height: 1.15;
+	font-weight: 800;
+	color: var(--muted);
+}
+
+.sidebar-greeting-name {
+	color: color-mix(in oklab, var(--accent) 65%, var(--text));
+	font-weight: 950;
+	font-size: 1.02em;
+}
+
+.sidebar-mode-pill {
+	margin-top: 8px;
+	display: inline-flex;
+	align-items: center;
+	padding: 6px 10px;
+	border-radius: 999px;
+	font-weight: 950;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	font-size: 0.65rem;
+	background: color-mix(in oklab, var(--accent) 18%, var(--card));
+	color: color-mix(in oklab, var(--accent) 55%, var(--text));
+}
+
+.sidebar-tt-row {
+	display: grid;
+	grid-template-columns: 1fr;
+	gap: 10px;
+}
+
+.sidebar-tt-input {
+	border: 1px solid color-mix(in oklab, var(--border, rgba(255,255,255,0.15)) 55%, transparent);
+	background: color-mix(in oklab, var(--surface) 70%, transparent);
+	padding: 10px 12px;
+	border-radius: 12px;
+	color: inherit;
+	font-weight: 850;
+	outline: none;
+}
+
+.sidebar-tt-input:focus {
+	border-color: color-mix(in oklab, var(--accent) 55%, var(--border, rgba(255,255,255,0.15)));
+}
+
+.sidebar-tt-status {
+	margin-bottom: 10px;
+	color: var(--accent);
+	font-weight: 950;
+}
+
+.sidebar-tt-msg {
+	margin-top: 10px;
+	padding: 10px 12px;
+	border-radius: 12px;
+	font-weight: 850;
+	white-space: pre-line;
+}
+
+.sidebar-tt-msg.ok {
+	background: color-mix(in oklab, rgba(16, 185, 129, 0.16) 75%, transparent);
+	color: color-mix(in oklab, #10b981 75%, #ffffff);
+}
+
+.sidebar-tt-msg.err {
+	background: color-mix(in oklab, rgba(239, 68, 68, 0.16) 75%, transparent);
+	color: color-mix(in oklab, #ef4444 75%, #ffffff);
+}
+
+/* Optional global hook: make Time Tracker mode visually distinct */
+body.time-tracker-mode .brand-icon {
+	filter: saturate(1.25);
+}
+
+
+/* Legacy accounts counter duplicates the chip now */
+.accounts-counter {
+	display: none;
+}
+
+@media (max-width: 980px) {
+	.time-row {
+		flex-direction: column;
+	}
+
+	.guide-kpis {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+
+	.details-grid {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+
+	.control-grid {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+@media (max-width: 560px) {
+	.details-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.control-grid {
+		grid-template-columns: 1fr;
+	}
+}

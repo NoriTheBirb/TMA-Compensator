@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>TmaCompensatorNg</title>
+  <base href="/">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="images/favicon-16x16.png">
+	<!-- Runtime config (fill these in your deployed HTML) -->
+  <meta name="supabase-url" content="https://mqpglxncyaejfouykqaw.supabase.co">
+  <meta name="supabase-anon-key" content="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1xcGdseG5jeWFlamZvdXlrcWF3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg3ODEwNDIsImV4cCI6MjA4NDM1NzA0Mn0.7hkxq_2IASnm5_1bDtoMS9TRDtlcsdvlCavsUYB_esE">
+  <!-- Optional: domain used for the internal username→email mapping (never shown to users).
+       Leave blank to default to the host of supabase-url (recommended). -->
+  <meta name="auth-email-domain" content="">
+</head>
+<body>
+  <script>
+    // GitHub Pages SPA deep-link support (path-based routing).
+    // 404.html redirects unknown paths to /<base>/?p=<path>&q=<query>&h=<hash>
+    // This restores the original URL before Angular boots.
+    (function () {
+      try {
+        var search = window.location.search || '';
+        if (!search || search.indexOf('p=') === -1) return;
+
+        var params = new URLSearchParams(search);
+        var p = params.get('p') || '';
+        if (!p) return;
+
+        var q = params.get('q') || '';
+        var h = params.get('h') || '';
+
+        // baseHref is the deployment root ("/" locally, "/<repo>/" on GitHub Pages).
+        var baseEl = document.querySelector('base');
+        var baseHref = (baseEl && baseEl.getAttribute('href')) ? baseEl.getAttribute('href') : '/';
+        if (!baseHref) baseHref = '/';
+        if (baseHref.charAt(0) !== '/') baseHref = '/' + baseHref;
+        if (baseHref.charAt(baseHref.length - 1) !== '/') baseHref = baseHref + '/';
+
+        if (p.charAt(0) !== '/') p = '/' + p;
+
+        var baseNoSlash = baseHref === '/' ? '' : baseHref.slice(0, -1);
+        var next = baseNoSlash + p;
+        if (q) next = next + '?' + q;
+        if (h) next = next + '#' + h;
+
+        window.history.replaceState(null, '', next);
+      } catch (e) {
+        // ignore
+      }
+    })();
+  </script>
+  <app-root></app-root>
+</body>
+</html>

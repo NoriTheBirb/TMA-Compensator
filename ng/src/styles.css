@@ -1,0 +1,17 @@
+/* Reuse the existing legacy styles while porting UI to Angular. */
+@import '../../Style.css';
+
+/*
+	Angular renders into custom elements (app-root, app-main-page, router-outlet).
+	The legacy CSS expects normal block-level layout, so force block/contents to
+	avoid inline custom-element quirks that can throw the whole layout off.
+*/
+app-root,
+app-main-page,
+app-report-page {
+	display: block;
+}
+
+router-outlet {
+	display: block;
+}

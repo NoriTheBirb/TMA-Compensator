@@ -1,0 +1,20 @@
+<router-outlet></router-outlet>
+
+<div class="companion" [class.is-hidden]="companion.hidden()">
+	<button
+		type="button"
+		class="companion-square"
+		aria-label="Abrir Noir"
+		(click)="$event.preventDefault(); $event.stopPropagation(); companion.toggleOpen()"
+	>
+		<img class="companion-img" [src]="companion.imageUrl()" alt="" />
+	</button>
+
+	<div class="companion-bubble" [class.is-open]="companion.open()" (click)="$event.stopPropagation()">
+		<div class="companion-bubble-head">
+			<div class="companion-title">{{ companion.title() }}</div>
+			<button type="button" class="companion-close" aria-label="Fechar" (click)="companion.open.set(false)">×</button>
+		</div>
+		<div class="companion-body">{{ companion.text() }}</div>
+	</div>
+</div>

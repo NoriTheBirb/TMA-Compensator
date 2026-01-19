@@ -1,0 +1,58 @@
+<div class="auth-shell">
+  <div class="auth-card" role="region" aria-label="Autenticação">
+    <div class="auth-head">
+      <div class="auth-badge">TMA Compensator</div>
+      <h1 class="auth-title">{{ title() }}</h1>
+      <p class="auth-sub">{{ subtitle() }}</p>
+    </div>
+
+    <div class="auth-error" *ngIf="!supabaseReady() && supabaseInitError()">
+      {{ supabaseInitError() }}
+    </div>
+
+    <form class="auth-form" (submit)="$event.preventDefault(); submit()">
+      <label class="auth-label" for="authUsername">Usuário</label>
+      <input
+        id="authUsername"
+        class="auth-input"
+        type="text"
+        autocomplete="username"
+        inputmode="text"
+        [ngModel]="username()"
+        (ngModelChange)="username.set($event)"
+        name="username"
+        placeholder="ex: joao.silva"
+        [disabled]="loading() || !supabaseReady()"
+      />
+
+      <label class="auth-label" for="authPassword">Senha</label>
+      <input
+        id="authPassword"
+        class="auth-input"
+        type="password"
+        autocomplete="current-password"
+        [ngModel]="password()"
+        (ngModelChange)="password.set($event)"
+        name="password"
+        placeholder="••••••••"
+        [disabled]="loading() || !supabaseReady()"
+      />
+
+      <div class="auth-error" *ngIf="errorText()">{{ errorText() }}</div>
+
+      <div class="auth-success" *ngIf="successText()">{{ successText() }}</div>
+
+      <button class="auth-btn" type="submit" [disabled]="loading() || !supabaseReady()">
+        {{ loading() ? 'Aguarde…' : (mode() === 'signin' ? 'Entrar' : 'Criar conta') }}
+      </button>
+
+      <button class="auth-link" type="button" (click)="toggleMode()" [disabled]="loading() || !supabaseReady()">
+        {{ mode() === 'signin' ? 'Não tenho conta' : 'Já tenho conta' }}
+      </button>
+
+      <div class="auth-note">
+        Use um usuário + senha (o app não pede email).
+      </div>
+    </form>
+  </div>
+</div>

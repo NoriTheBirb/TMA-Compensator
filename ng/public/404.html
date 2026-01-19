@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Redirecting…</title>
+  </head>
+  <body>
+    <script>
+      // GitHub Pages SPA fallback (path-based routing).
+      // If a user refreshes /<repo>/report, Pages serves 404.html. This script
+      // rewrites the URL to /<repo>/?p=/report&q=<query>&h=<hash> so index.html
+      // can restore it before Angular boots.
+      (function () {
+        var loc = window.location;
+
+        // Derive base path ("/" or "/<repo>/") from the first path segment.
+        var parts = (loc.pathname || '/').split('/').filter(Boolean);
+        var base = parts.length > 0 ? '/' + parts[0] + '/' : '/';
+
+        // Remove base prefix to get the SPA route path.
+        var fullPath = loc.pathname || '/';
+        var routePath = fullPath.indexOf(base) === 0 ? fullPath.slice(base.length - 1) : fullPath;
+        if (!routePath) routePath = '/';
+
+        var q = (loc.search || '').replace(/^\?/, '');
+        var h = (loc.hash || '').replace(/^#/, '');
+
+        var next = base + '?p=' + encodeURIComponent(routePath);
+        if (q) next += '&q=' + encodeURIComponent(q);
+        if (h) next += '&h=' + encodeURIComponent(h);
+
+        loc.replace(next);
+      })();
+    </script>
+  </body>
+</html>

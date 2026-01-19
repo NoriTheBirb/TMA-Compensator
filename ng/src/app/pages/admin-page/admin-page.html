@@ -1,0 +1,426 @@
+<div class="container admin-container">
+  <button
+    class="sidebar-toggle-btn"
+    type="button"
+    aria-label="Abrir menu"
+    aria-controls="adminSidebar"
+    [attr.aria-expanded]="sidebarOpen()"
+    (click)="toggleSidebar()"
+    title="Menu"
+  >
+    ☰
+  </button>
+
+  <header class="admin-header">
+    <div>
+      <h1 class="admin-title">Painel (Admin)</h1>
+      <div class="admin-sub">Visão do dia de todos os usuários (contas, ritmo e saldo).</div>
+    </div>
+
+    <div class="admin-actions">
+      <button class="sidebar-action" type="button" (click)="goBack()">← Voltar</button>
+      <button class="sidebar-action" type="button" (click)="toggleLive()">
+        {{ liveEnabled() ? 'Ao vivo: ON' : 'Ao vivo: OFF' }}
+      </button>
+      <button class="sidebar-action" type="button" (click)="refresh()" [disabled]="loading()">Atualizar</button>
+    </div>
+  </header>
+
+  <div class="admin-hint">
+    <span class="admin-pill">Hoje</span>
+    <span class="admin-muted" style="margin-left:10px;">Atualizado: {{ asOfIso() | date:'HH:mm:ss' }}</span>
+  </div>
+
+  <div class="admin-error" *ngIf="errorText()">{{ errorText() }}</div>
+
+  <section class="admin-kpis">
+    <div class="admin-kpi">
+      <div class="admin-kpi-label">Usuários</div>
+      <div class="admin-kpi-value">{{ kpiTotalUsers() }}</div>
+    </div>
+    <div class="admin-kpi">
+      <div class="admin-kpi-label">Contas</div>
+      <div class="admin-kpi-value">{{ kpiTotalTx() }}</div>
+    </div>
+    <div class="admin-kpi">
+      <div class="admin-kpi-label">Unidades</div>
+      <div class="admin-kpi-value">{{ kpiTotalUnits() }}</div>
+    </div>
+    <div class="admin-kpi">
+      <div class="admin-kpi-label">Saldo (Gasto - TMA)</div>
+      <div class="admin-kpi-value" [class.ok]="abs(kpiTotalSaldo()) <= 600" [class.bad]="abs(kpiTotalSaldo()) > 600">
+        {{ formatDiff(kpiTotalSaldo()) }}
+      </div>
+    </div>
+  </section>
+
+  <section class="admin-controls">
+    <label class="admin-field">
+      <span class="admin-field-label">Buscar</span>
+      <input class="admin-input" type="text" placeholder="Nome ou user_id" [ngModel]="query()" (ngModelChange)="query.set($event)" />
+    </label>
+
+    <label class="admin-check">
+      <input type="checkbox" [checked]="showAdmins()" (change)="showAdmins.set($any($event.target).checked)" />
+      <span>Mostrar admins</span>
+    </label>
+
+    <div class="admin-sort">
+      <span class="admin-muted">Ordenar:</span>
+      <button class="admin-sort-btn" type="button" (click)="setSort('units')">Unidades</button>
+      <button class="admin-sort-btn" type="button" (click)="setSort('accounts')">Contas</button>
+      <button class="admin-sort-btn" type="button" (click)="setSort('saldo')">Saldo</button>
+      <button class="admin-sort-btn" type="button" (click)="setSort('last')">Última</button>
+    </div>
+  </section>
+
+  <section class="admin-panel">
+    <div class="admin-table">
+      <div class="admin-row admin-row--head">
+        <div>Usuário</div>
+        <div>Contas</div>
+        <div>Unidades</div>
+        <div>Saldo (Gasto - TMA)</div>
+        <div>Última conta</div>
+      </div>
+
+      <button class="admin-row admin-row--button" type="button" *ngFor="let r of rows()" (click)="openUser(r)">
+        <div class="admin-user">
+          <div class="admin-user-name">{{ r.username }}</div>
+          <div class="admin-user-sub">
+            <span class="admin-dot" [class.on]="isRecentlyActive(r.lastTxAtIso)"></span>
+            <span>{{ isRecentlyActive(r.lastTxAtIso) ? 'Ativo' : '—' }}</span>
+          </div>
+        </div>
+        <div class="admin-num">{{ r.txCount }}</div>
+        <div class="admin-num">{{ r.doneUnits }}</div>
+        <div class="admin-diff" [class.ok]="abs(r.diffSeconds) <= 600" [class.bad]="abs(r.diffSeconds) > 600">
+          {{ formatDiff(r.diffSeconds) }}
+        </div>
+        <div class="admin-last">{{ formatLastSeen(r.lastTxAtIso) }}</div>
+      </button>
+
+      <div class="admin-empty" *ngIf="!loading() && rows().length === 0">
+        Nenhum usuário encontrado.
+      </div>
+    </div>
+  </section>
+</div>
+
+<div
+  class="sidebar-overlay"
+  [class.is-open]="sidebarShown()"
+  [class.is-closing]="sidebarClosing()"
+  (click)="closeSidebar()"
+  aria-hidden="true"
+></div>
+
+<aside
+  id="adminSidebar"
+  class="sidebar"
+  [class.is-open]="sidebarOpen()"
+  [class.is-closing]="sidebarClosing()"
+  [attr.aria-hidden]="sidebarShown() ? 'false' : 'true'"
+>
+  <div class="sidebar-header">
+    <div>
+      <div class="sidebar-title">Admin</div>
+      <div class="sidebar-greeting" *ngIf="helloName()">Oi, <span class="sidebar-greeting-name">{{ helloName() }}</span></div>
+      <div class="sidebar-mode-pill">Painel</div>
+    </div>
+    <button class="sidebar-close" type="button" aria-label="Fechar menu" (click)="closeSidebar()">&times;</button>
+  </div>
+
+  <div class="sidebar-body">
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">Navegação</div>
+      <button class="sidebar-action" type="button" (click)="goBack()">← Voltar</button>
+      <a routerLink="/report" class="sidebar-action" style="text-decoration:none; display:block; text-align:center;" (click)="closeSidebar()">Ir para Relatório</a>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">Ações</div>
+      <button class="sidebar-action" type="button" (click)="refresh()" [disabled]="loading()">Atualizar</button>
+      <button class="sidebar-action" type="button" (click)="toggleLive()">{{ liveEnabled() ? 'Ao vivo: ON' : 'Ao vivo: OFF' }}</button>
+      <button class="sidebar-action" type="button" (click)="openBroadcast()">Mensagem p/ todos</button>
+      <button class="sidebar-action sidebar-action--danger" type="button" (click)="logout()">Sair</button>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">Noir</div>
+
+      <div class="sidebar-row">
+        <span>Ativar</span>
+        <label class="switch" style="margin-bottom:0;">
+          <input
+            type="checkbox"
+            id="adminSidebarCompanionToggle"
+            [checked]="!companion.hidden()"
+            (change)="setCompanionEnabled($any($event.target).checked)"
+          />
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <button class="sidebar-action" type="button" (click)="companion.showHelp()" [disabled]="companion.hidden()">O que eu faço?</button>
+      <button class="sidebar-action" type="button" (click)="companion.showTip()" [disabled]="companion.hidden()">Dica rápida</button>
+      <button class="sidebar-action" type="button" (click)="companion.showMotivation()" [disabled]="companion.hidden()">Motivação</button>
+      <button class="sidebar-action" type="button" (click)="companion.showShortcuts()" [disabled]="companion.hidden()">Atalhos</button>
+      <button class="sidebar-action" type="button" (click)="companion.showTimeTrackerInfo()" [disabled]="companion.hidden()">Time Tracker</button>
+
+    </div>
+  </div>
+</aside>
+
+<div class="admin-modal-overlay" *ngIf="broadcastOpen()" (click)="closeBroadcast()">
+  <div class="admin-modal admin-modal--small admin-modal--composer" (click)="$event.stopPropagation()">
+    <header class="admin-modal-head">
+      <div>
+        <div class="admin-modal-title">Mensagem para todos</div>
+        <div class="admin-modal-sub">
+            <span class="admin-muted">Envia um aviso global que aparece no Noir de todos os usuários online.</span>
+        </div>
+      </div>
+      <button class="admin-modal-close" type="button" (click)="closeBroadcast()">✕</button>
+    </header>
+
+    <div class="admin-modal-scroll">
+      <div class="admin-error" *ngIf="broadcastError()">{{ broadcastError() }}</div>
+
+      <label class="admin-field" style="min-width: unset;">
+        <span class="admin-field-label">Mensagem</span>
+        <textarea
+          class="admin-input"
+          rows="6"
+          placeholder="Ex: Pessoal, lembrem de padronizar o início da conta hoje."
+          [ngModel]="broadcastText()"
+          (ngModelChange)="broadcastText.set($event)"
+        ></textarea>
+      </label>
+    </div>
+
+    <div class="admin-modal-actions">
+      <button class="sidebar-action" type="button" (click)="closeBroadcast()" [disabled]="broadcastSending()">Cancelar</button>
+      <button
+        class="sidebar-action"
+        type="button"
+        (click)="sendBroadcast()"
+        [disabled]="broadcastSending() || !broadcastText().trim()"
+      >
+        {{ broadcastSending() ? 'Enviando…' : 'Enviar' }}
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="admin-modal-overlay" *ngIf="detailsOpen()" (click)="closeDetails()">
+  <div class="admin-modal" (click)="$event.stopPropagation()">
+    <header class="admin-modal-head">
+      <div>
+        <div class="admin-modal-title">{{ selectedRow()?.username || 'Usuário' }}</div>
+        <div class="admin-modal-sub">
+          <span class="admin-pill" *ngIf="selectedProfile()?.is_admin">Admin</span>
+          <span class="admin-muted" style="margin-left:10px;">ID: {{ selectedRow()?.userId }}</span>
+        </div>
+      </div>
+      <button class="admin-modal-close" type="button" (click)="closeDetails()">✕</button>
+    </header>
+
+    <section class="admin-modal-kpis">
+      <div class="admin-kpi">
+        <div class="admin-kpi-label" title="Quantidade de contas registradas hoje">Contas (qtd)</div>
+        <div class="admin-kpi-value">{{ selectedTimeStats().workCount }}</div>
+      </div>
+      <div class="admin-kpi">
+        <div class="admin-kpi-label" title="Quantidade de registros no Time Tracker hoje">TT (qtd)</div>
+        <div class="admin-kpi-value">{{ selectedTimeStats().ttCount }}</div>
+      </div>
+      <div class="admin-kpi">
+        <div class="admin-kpi-label" title="Tempo total gasto nas contas (hoje)">Tempo em contas</div>
+        <div class="admin-kpi-value">{{ formatTime(selectedTimeStats().workSeconds) }}</div>
+      </div>
+      <div class="admin-kpi">
+        <div class="admin-kpi-label" title="Tempo total registrado no Time Tracker (inclui idle)">Tempo em TT</div>
+        <div class="admin-kpi-value">{{ formatTime(selectedTimeStats().ttSeconds) }}</div>
+      </div>
+      <div class="admin-kpi">
+        <div class="admin-kpi-label" title="Parte do TT marcada como 'Ociosidade involuntaria'">Idle (invol.)</div>
+        <div class="admin-kpi-value">{{ formatTime(selectedTimeStats().idleSeconds) }}</div>
+      </div>
+      <div class="admin-kpi">
+        <div class="admin-kpi-label" title="Unidades estimadas (peso por item)">Unidades</div>
+        <div class="admin-kpi-value">{{ selectedTimeStats().doneUnits }}</div>
+      </div>
+      <div class="admin-kpi">
+        <div class="admin-kpi-label" title="Saldo do dia só nas contas: (Gasto - TMA)">Saldo (contas)</div>
+        <div class="admin-kpi-value" [class.ok]="abs(selectedTimeStats().diffSeconds) <= 600" [class.bad]="abs(selectedTimeStats().diffSeconds) > 600">
+          {{ formatDiff(selectedTimeStats().diffSeconds) }}
+        </div>
+      </div>
+      <div class="admin-kpi">
+        <div class="admin-kpi-label" title="Ritmo estimado no período ativo (unidades por hora)">Ritmo (unid/h)</div>
+        <div class="admin-kpi-value">{{ (selectedTimeStats().unitsPerHour || 0) | number:'1.1-1' }}</div>
+      </div>
+    </section>
+
+    <section class="admin-visual-grid" *ngIf="detailsOpen()">
+      <div class="admin-visual-card">
+        <div class="admin-visual-title">Distribuição do tempo (contas vs TT)</div>
+        <div class="admin-stacked" role="img" aria-label="Barra de distribuição do tempo">
+          <div class="seg accounts" [style.width.%]="selectedVisual().accountsPct" title="Contas: {{ formatTime(selectedTimeStats().workSeconds) }}"></div>
+          <div class="seg tt" [style.width.%]="selectedVisual().ttUsefulPct" title="TT útil: {{ formatTime(selectedTimeStats().usefulTtSeconds) }}"></div>
+          <div class="seg idle" [style.width.%]="selectedVisual().idlePct" title="Idle (invol.): {{ formatTime(selectedTimeStats().idleSeconds) }}"></div>
+        </div>
+        <div class="admin-visual-legend">
+          <div><span class="dot accounts"></span>Contas <b>{{ formatTime(selectedTimeStats().workSeconds) }}</b></div>
+          <div><span class="dot tt"></span>TT útil <b>{{ formatTime(selectedTimeStats().usefulTtSeconds) }}</b></div>
+          <div><span class="dot idle"></span>Idle <b>{{ formatTime(selectedTimeStats().idleSeconds) }}</b></div>
+        </div>
+      </div>
+
+      <div class="admin-visual-card">
+        <div class="admin-visual-title">Qualidade do registro</div>
+        <div class="admin-meter-row">
+          <div class="admin-meter-label">TT no período ativo</div>
+          <div class="admin-meter">
+            <div class="admin-meter-fill tt" [style.width.%]="selectedVisual().ttWindowPct"></div>
+          </div>
+          <div class="admin-meter-value">{{ selectedVisual().ttWindowPct | number:'1.0-0' }}%</div>
+        </div>
+        <div class="admin-meter-row">
+          <div class="admin-meter-label">Idle dentro do TT</div>
+          <div class="admin-meter">
+            <div class="admin-meter-fill idle" [style.width.%]="selectedVisual().idleInTtPct"></div>
+          </div>
+          <div class="admin-meter-value">{{ selectedVisual().idleInTtPct | number:'1.0-0' }}%</div>
+        </div>
+      </div>
+
+      <div class="admin-visual-card">
+        <div class="admin-visual-title">Saldo (Gasto - TMA) • contas</div>
+        <div class="admin-saldo-meter" title="0 é perfeito; positivo = acima do TMA; negativo = abaixo">
+          <div class="admin-saldo-center"></div>
+          <div class="admin-saldo-pos" [style.left.%]="selectedVisual().saldoMeterPct"></div>
+        </div>
+        <div class="admin-saldo-value" [class.ok]="abs(selectedTimeStats().diffSeconds) <= 600" [class.bad]="abs(selectedTimeStats().diffSeconds) > 600">
+          {{ formatDiff(selectedTimeStats().diffSeconds) }}
+        </div>
+        <div class="admin-saldo-sub">(clamp visual: ±30min)</div>
+      </div>
+    </section>
+
+    <section class="admin-modal-body">
+      <div class="admin-modal-col">
+        <h3 class="admin-h3">Top itens (hoje)</h3>
+        <div class="admin-chips">
+          <span class="admin-chip" *ngFor="let it of selectedTopItems()">{{ it[0] }} <b>×{{ it[1] }}</b></span>
+          <div class="admin-empty" *ngIf="selectedTopItems().length === 0">Sem contas hoje.</div>
+        </div>
+      </div>
+
+      <div class="admin-modal-col">
+        <h3 class="admin-h3">Top Time Tracker (hoje)</h3>
+        <div class="admin-chips">
+          <span class="admin-chip" *ngFor="let it of selectedTopTimeTrackerItems()">{{ it[0] }} <b>×{{ it[1] }}</b></span>
+          <div class="admin-empty" *ngIf="selectedTopTimeTrackerItems().length === 0">Sem Time Tracker hoje.</div>
+        </div>
+      </div>
+
+      <div class="admin-modal-col">
+        <h3 class="admin-h3">Registros recentes (hoje)</h3>
+        <div class="admin-tx-list">
+          <div class="admin-tx" *ngFor="let t of selectedTx().slice(0, 30)">
+            <div class="admin-tx-main">
+              <div class="admin-tx-item">{{ t.item }} <span class="admin-type">{{ (t.type || '') }}</span></div>
+              <div class="admin-tx-time">{{ formatIsoShort(t.created_at) }}</div>
+            </div>
+            <div class="admin-tx-meta">
+              <span class="admin-mini">TMA: {{ formatTime(t.tma) }}</span>
+              <span class="admin-mini">Gasto: {{ formatTime(t.time_spent) }}</span>
+              <span class="admin-mini" [class.ok]="abs((t.time_spent||0)-(t.tma||0)) <= 600" [class.bad]="abs((t.time_spent||0)-(t.tma||0)) > 600">
+                Saldo: {{ formatDiff((t.time_spent||0)-(t.tma||0)) }}
+              </span>
+            </div>
+          </div>
+          <div class="admin-empty" *ngIf="selectedTx().length === 0">Sem registros hoje.</div>
+        </div>
+      </div>
+
+      <div class="admin-modal-col">
+        <details class="admin-details">
+          <summary class="admin-details-summary">Detalhes (horários e taxas)</summary>
+          <div class="admin-summary" style="margin-top:10px;">
+            <div title="Horário do primeiro registro do dia"><b>Primeiro registro:</b> {{ selectedTimeStats().firstIso ? formatIsoShort(selectedTimeStats().firstIso!) : '—' }}</div>
+            <div title="Horário do último registro do dia"><b>Último registro:</b> {{ selectedTimeStats().lastIso ? formatIsoShort(selectedTimeStats().lastIso!) : '—' }}</div>
+            <div title="Tempo entre o primeiro e o último registro (não é tempo trabalhado; é o intervalo)"><b>Período ativo (1º→último):</b> {{ formatTime(selectedTimeStats().windowSeconds) }}</div>
+            <div title="Soma do tempo registrado em contas + Time Tracker"><b>Tempo total (contas + TT):</b> {{ formatTime(selectedTimeStats().totalSeconds) }}</div>
+            <div title="TT sem o tempo de idle involuntário"><b>TT útil (TT - idle):</b> {{ formatTime(selectedTimeStats().usefulTtSeconds) }}</div>
+            <div title="Contas por hora calculado dentro do período ativo"><b>Ritmo (contas/h no período):</b> {{ (selectedTimeStats().accountsPerHour || 0) | number:'1.1-1' }}</div>
+          </div>
+        </details>
+      </div>
+
+      <div class="admin-modal-col">
+        <h3 class="admin-h3">Top por tempo — Contas (hoje)</h3>
+        <div class="admin-breakdown">
+          <div class="admin-break-row" *ngFor="let r of selectedTopByTime()">
+            <div class="admin-break-item">{{ r.item }}</div>
+            <div class="admin-break-meta">{{ formatTime(r.seconds) }} • {{ r.count }}× • média {{ formatTime(r.avgSeconds) }}</div>
+          </div>
+          <div class="admin-empty" *ngIf="selectedTopByTime().length === 0">Sem contas hoje.</div>
+        </div>
+      </div>
+
+      <div class="admin-modal-col">
+        <h3 class="admin-h3">Top por tempo — Time Tracker (hoje)</h3>
+        <div class="admin-breakdown">
+          <div class="admin-break-row" *ngFor="let r of selectedTopTimeTrackerByTime()">
+            <div class="admin-break-item">{{ r.item }}</div>
+            <div class="admin-break-meta">{{ formatTime(r.seconds) }} • {{ r.count }}× • média {{ formatTime(r.avgSeconds) }}</div>
+          </div>
+          <div class="admin-empty" *ngIf="selectedTopTimeTrackerByTime().length === 0">Sem Time Tracker hoje.</div>
+        </div>
+      </div>
+
+      <!-- Work hours graphic -->
+      <div class="admin-modal-col">
+        <h3 class="admin-h3">Gráfico de Horas Trabalhadas (hoje)</h3>
+        <canvas id="workHoursChart" class="admin-workhours-canvas"></canvas>
+        <div id="workHoursLegend" class="admin-chart-legend"></div>
+      </div>
+      <div class="admin-modal-col" *ngIf="selectedHourlyBreakdown().length">
+        <details class="admin-details" open>
+          <summary class="admin-details-summary">Detalhe por hora</summary>
+          <div class="hourly-breakdown" style="margin-top:10px;">
+            <table class="hourly-breakdown-table">
+              <thead>
+                <tr>
+                  <th>Hora</th>
+                  <th>Contas</th>
+                  <th>TT útil</th>
+                  <th>Idle</th>
+                  <th>Total</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let r of selectedHourlyBreakdown()">
+                  <td class="hour">{{ r.hour.toString().padStart(2, '0') }}:00</td>
+                  <td>{{ formatTime(r.accountsSeconds) }} <span class="muted">({{ r.accountsCount }})</span></td>
+                  <td>{{ formatTime(r.usefulTtSeconds) }} <span class="muted">({{ r.ttCount }})</span></td>
+                  <td>{{ formatTime(r.idleSeconds) }}</td>
+                  <td><b>{{ formatTime(r.totalSeconds) }}</b></td>
+                  <td class="actions">
+                    <span class="muted" *ngIf="!r.actions.length">—</span>
+                    <span *ngIf="r.actions.length">{{ r.actions.slice(0, 3).join(' · ') }}</span>
+                    <span class="muted" *ngIf="r.actions.length > 3"> +{{ r.actions.length - 3 }}</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </details>
+      </div>
+    </section>
+  </div>
+</div>

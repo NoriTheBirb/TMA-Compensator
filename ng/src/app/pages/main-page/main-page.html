@@ -1,0 +1,632 @@
+
+<div class="container">
+	<!-- Hide the main UI while the welcome modal is open -->
+	<div id="mainPageContent" [class.onboarding-hidden]="state.onboardingOpen()">
+	<header class="app-topbar" aria-label="Barra superior">
+		<div class="app-topbar-left">
+			<div class="brand-icon" aria-hidden="true"></div>
+			<div class="app-brand">
+				<h1 class="app-title">TMA Compensator</h1>
+			</div>
+		</div>
+
+		<div class="app-topbar-right">
+			<ng-container *ngIf="state.assistantKpis() as k">
+				<div id="quotaPill" class="quota-chip" aria-label="Contas feitas">
+					<span class="quota-chip-k">Contas feitas:</span>
+					<span class="quota-chip-v">{{ k.doneUnits }}/{{ k.dailyQuota }}</span>
+				</div>
+			</ng-container>
+
+			<div *ngIf="profile.timeTrackerEnabled()" class="quota-chip quota-chip--tt" aria-label="Time Tracker">
+				<span class="quota-chip-k">Modo:</span>
+				<span class="quota-chip-v">Time Tracker</span>
+			</div>
+
+			<a
+				id="openReportBtn"
+				class="topbar-link"
+				href="/report"
+				(click)="goToReport($event)"
+				title="Abrir relatório"
+				aria-label="Abrir relatório"
+			>Relatório</a>
+
+			<button
+				type="button"
+				class="icon-btn"
+				[attr.aria-pressed]="state.darkThemeEnabled()"
+				[attr.aria-label]="state.darkThemeEnabled() ? 'Alternar para tema claro' : 'Alternar para tema escuro'"
+				(click)="toggleDarkTheme(!state.darkThemeEnabled())"
+				[attr.title]="state.darkThemeEnabled() ? 'Tema claro' : 'Tema escuro'"
+			>
+				{{ state.darkThemeEnabled() ? '☀' : '☾' }}
+			</button>
+		</div>
+	</header>
+
+	<div class="top-row">
+		<div class="time-row">
+			<div class="time-balance">
+				<div class="balance-display">
+					<span class="balance-label">Saldo de Tempo</span>
+					<span
+						class="balance-value"
+						id="balance"
+						[class.neutral]="state.withinBalanceMargin()"
+						[class.positive]="!state.withinBalanceMargin() && state.balanceSeconds() > 0"
+						[class.negative]="!state.withinBalanceMargin() && state.balanceSeconds() < 0"
+					>
+						{{ balanceText() }}
+					</span>
+				</div>
+				<div class="balance-actions">
+					<button id="endDayBtn" class="btn-end-day btn-primary-pill" type="button" (click)="exportEndDay()">Finalizar Dia</button>
+				</div>
+			</div>
+
+			<div class="current-time">
+				<div class="time-display">
+					<div class="card-head">
+						<span class="time-label">Turno Atual</span>
+						<button
+							type="button"
+							class="btn-mini-pill"
+							(click)="endWorkDayFromTurnoBox()"
+							title="Encerrar / exportar fim do dia"
+						>
+							Encerrar dia
+						</button>
+						<span class="time-value" id="currentTime">{{ state.turnoAtualHHMM() }}</span>
+					</div>
+					<div class="turno-details" aria-label="Detalhes do turno">
+						<div class="turno-line"><span class="turno-k">Agora</span><span class="turno-v" id="turnoNow">{{ state.turnoNowClock() }}</span></div>
+						<div class="turno-line"><span class="turno-k">Fim</span><span class="turno-v" id="turnoEnd">{{ state.turnoEndClock() }}</span></div>
+						<div class="turno-line"><span class="turno-k">Trabalho restante</span><span class="turno-v" id="turnoWorkLeft">{{ state.turnoWorkLeftHuman() }}</span></div>
+						<div class="turno-line"><span class="turno-k">Status</span><span class="turno-v" id="turnoStatus">{{ state.statusLabel() }}</span></div>
+					</div>
+				</div>
+			</div>
+		</div>
+		<div class="assistant-section">
+			<div class="account-assistant guide-card">
+				<ng-container *ngIf="state.assistantKpis() as k">
+					<div class="guide-head">
+						<div>
+							<div class="guide-title">Guia de contas</div>
+							<div class="guide-sub">Meta até agora: <strong>{{ k.expectedDoneNow }}</strong>/<strong>{{ k.dailyQuota }}</strong></div>
+						</div>
+						<div class="guide-need" *ngIf="k.dayPart.key !== 'post' && k.remainingUnits > 0">
+							<div class="guide-need-k">Ritmo necessário</div>
+							<div class="guide-need-v">{{ k.pacePerHourNeededText }}</div>
+						</div>
+					</div>
+
+					<div
+						id="assistantBody"
+						class="guide-progress"
+						role="progressbar"
+						[attr.aria-valuemin]="0"
+						[attr.aria-valuemax]="k.dailyQuota"
+						[attr.aria-valuenow]="k.doneUnits"
+					>
+						<div class="guide-progress-bar" [style.width.%]="k.dailyQuota > 0 ? (k.doneUnits / k.dailyQuota) * 100 : 0"></div>
+					</div>
+
+					<div class="guide-kpis">
+						<div class="mini-kpi">
+							<div class="mini-k">Tempo restante</div>
+							<div class="mini-v">{{ k.remainingWorkText }}</div>
+						</div>
+						<div class="mini-kpi">
+							<div class="mini-k">Saldo</div>
+							<div class="mini-v" [class.ok]="k.withinMarginNow" [class.warn]="!k.withinMarginNow">{{ k.balanceText }}</div>
+						</div>
+						<div class="mini-kpi">
+							<div class="mini-k">Status</div>
+							<div class="mini-v" [class.ok]="k.quotaDelta >= 0" [class.warn]="k.quotaDelta < 0">{{ k.quotaDelta >= 0 ? 'adiantado' : 'atrasado' }} ({{ k.quotaDelta >= 0 ? '+' : '' }}{{ k.quotaDelta }})</div>
+						</div>
+						<div class="mini-kpi">
+							<div class="mini-k">TMA médio</div>
+							<div class="mini-v">{{ secondsToTime(k.avgTimeSpentSeconds) }}</div>
+						</div>
+					</div>
+
+					<details class="guide-details" [open]="assistantDetailsOpen()" (toggle)="onAssistantDetailsToggle($event)">
+						<summary>Detalhes</summary>
+						<div class="details-grid">
+							<div class="kpi"><span>Você está</span><span class="value" [class.ok]="k.quotaDelta >= 0" [class.warn]="k.quotaDelta < 0">{{ k.quotaDelta >= 0 ? 'adiantado' : 'atrasado' }} ({{ k.quotaDelta >= 0 ? '+' : '' }}{{ k.quotaDelta }})</span></div>
+							<div class="kpi"><span>Seu ritmo</span><span class="value">{{ k.currentPacePerHourText }}</span></div>
+							<div class="kpi"><span>Tempo por conta</span><span class="value">{{ secondsToTime(k.budgetPerAccountSeconds) }}</span></div>
+							<div class="muted">Transações registradas: <strong>{{ k.doneTx }}</strong>.</div>
+							<div class="muted">Faixa ok (±10m no fim): {{ signed(k.avgDiffMin) }} a {{ signed(k.avgDiffMax) }}.</div>
+							<div class="muted">Se continuar na mesma média ({{ signed(k.avgDiffSoFar) }} por conta), termina em <span [class.ok]="k.predictedOk" [class.warn]="!k.predictedOk">{{ signed(k.predictedEnd) }}</span>.</div>
+						</div>
+					</details>
+				</ng-container>
+		</div>
+	</div>
+
+	<div class="accounts-counter" id="accountsCounter">
+		Contas feitas: <span id="accountsCount">{{ state.quotaUnitsDone() }}</span>
+	</div>
+
+	<!-- Legacy debug panel (kept for CSS/layout parity; hidden by default like the original) -->
+	<div class="debug-panel" id="debugPanel" [style.display]="debugPanelOpen() ? '' : 'none'">
+		<h3>Debug Tool</h3>
+		<div style="display: flex; gap: 20px; flex-wrap: wrap;">
+			<div>
+				<label>Set Current Time (HH:MM:SS): </label>
+				<input
+					type="text"
+					id="debugTimeInput"
+					placeholder="08:00:00"
+					class="time-input"
+					autocomplete="off"
+					inputmode="numeric"
+					[ngModel]="debugTimeInput()"
+					(ngModelChange)="debugTimeInput.set($event)"
+				>
+				<button id="setDebugTimeBtn" type="button" (click)="applyDebugTime()">Set Time</button>
+				<button id="resetDebugTimeBtn" type="button" (click)="resetDebugTime()">Reset to Real Time</button>
+
+				<div class="debug-section">
+					<strong>Shift Simulator:</strong>
+					<div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:8px;">
+						<label style="display:flex; gap:6px; align-items:center;">
+							Speed
+							<select
+								id="simSpeed"
+								style="padding:6px 8px;"
+								[ngModel]="simSpeedInput()"
+								(ngModelChange)="updateSimSpeed($event)"
+							>
+								<option [ngValue]="1">1x</option>
+								<option [ngValue]="10">10x</option>
+								<option [ngValue]="60">60x</option>
+								<option [ngValue]="300">300x</option>
+								<option [ngValue]="600">600x</option>
+							</select>
+						</label>
+						<button id="simStartBtn" type="button" (click)="startSim()">Iniciar/Retomar</button>
+						<button id="simPauseBtn" type="button" (click)="pauseSim()">Pause</button>
+						<button id="simResetBtn" type="button" (click)="stopSim()">Parar &amp; Zerar</button>
+						<span id="simStatus" style="font-weight:600;">{{ state.simStatus() }}</span>
+					</div>
+					<div class="debug-hint">
+						<span id="simRangeHint">Simulates time from 08:00 to 17:48 (lunch respected).</span>
+					</div>
+				</div>
+
+				<div class="debug-section">
+					<strong>Preferências:</strong>
+					<div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:8px;">
+						<label style="display:flex; gap:8px; align-items:center; font-weight:600;">
+							<input type="checkbox" id="complexaToggleDebug" [checked]="state.showComplexa()" (change)="toggleComplexa($any($event.target).checked)" />
+							Eu faço contas <strong>Complexas</strong>
+						</label>
+					</div>
+				</div>
+			</div>
+			<div>
+				<strong>Info:</strong><br>
+				Real Time: <span id="realTimeDisplay">{{ state.turnoNowClock() }}</span><br>
+				Debug Time: <span id="debugTimeDisplay">{{ state.turnoNowClock() }}</span><br>
+				Shift: <span id="shiftDisplay">{{ state.shiftClockRange() }}</span><br>
+				Lunch: <span id="lunchDisplay">{{ state.lunchClockRange() }}</span><br>
+				Balance: <span id="debugBalanceDisplay">{{ balanceText() }}</span><br>
+				Lunch Mode: <span id="lunchModeDisplay">{{ state.isLunchNow() ? 'Yes' : 'No' }}</span>
+			</div>
+		</div>
+		<div style="margin-top: 16px; display: flex; align-items: center; gap: 8px;">
+			<label class="switch" style="margin-bottom:0;">
+				<input type="checkbox" id="toggleLunchStyle" [checked]="state.lunchStyleEnabled()" (change)="toggleLunchStyle($any($event.target).checked)">
+				<span class="slider"></span>
+			</label>
+			<span style="font-weight:600;">Ativar estilo relaxante do almoço</span>
+		</div>
+	</div>
+
+
+
+
+	<div class="control-section">
+		<div class="control-header">
+			<div style="display:flex; align-items: baseline; justify-content: space-between; gap: 12px; width: 100%;">
+				<h2 style="margin:0;">
+					{{ profile.timeTrackerEnabled() && mainTab() === 'timeTracker' ? 'Time Tracker' : 'Tipos de Conta' }}
+				</h2>
+
+				<div class="control-tabs" *ngIf="profile.timeTrackerEnabled()">
+					<button
+						class="control-tab"
+						type="button"
+						[class.active]="mainTab() === 'accounts'"
+						(click)="mainTab.set('accounts')"
+					>
+						Contas
+					</button>
+					<button
+						class="control-tab"
+						type="button"
+						[class.active]="mainTab() === 'timeTracker'"
+						(click)="mainTab.set('timeTracker')"
+					>
+						Time Tracker
+					</button>
+				</div>
+			</div>
+		</div>
+
+		<div class="control-grid" *ngIf="!profile.timeTrackerEnabled() || mainTab() === 'accounts'">
+			<div class="control-box" *ngFor="let acct of visibleAccounts()">
+				<div class="box-content">
+					<h3>{{ acct.name }}</h3>
+					<div class="timer-display">{{ state.timerTextForAccount(acct.name) }}</div>
+					<ng-container *ngIf="state.flowModeEnabled(); else legacyTmaList">
+						<div class="tma-row" aria-label="TMAs do tipo de conta">
+							<span class="tma-pill" *ngFor="let a of acct.actions">
+								{{ typeLabel(a.type) }} • {{ secondsToTime(a.tmaSeconds) }}
+							</span>
+						</div>
+					</ng-container>
+					<ng-template #legacyTmaList>
+						<p *ngFor="let a of acct.actions">{{ typeLabel(a.type) }}: {{ secondsToTime(a.tmaSeconds) }}</p>
+					</ng-template>
+				</div>
+				<div class="box-actions">
+					<button
+						class="btn-action"
+						[type]="'button'"
+						*ngFor="let a of acct.actions"
+						[disabled]="isActionDisabled(a)"
+						[ngClass]="actionButtonClass(a)"
+						(click)="clickAction(a)"
+					>
+						{{ actionButtonLabel(a) }}
+					</button>
+				</div>
+			</div>
+		</div>
+
+		<div class="control-grid" *ngIf="profile.timeTrackerEnabled() && mainTab() === 'timeTracker'">
+			<div class="control-box" *ngFor="let opt of timeTrackerOptions()">
+				<div class="box-content">
+					<h3>{{ opt.name }}</h3>
+					<div class="timer-display">{{ state.timerTextForAccount(opt.name) }}</div>
+					<p class="muted" style="margin: 10px 0 0; font-weight: 700;">
+						{{ opt.name === 'Almoço' ? 'Auto para sozinho em 1h' : 'Flow obrigatório' }}
+					</p>
+				</div>
+				<div class="box-actions">
+					<button
+						class="btn-action"
+						[type]="'button'"
+						[disabled]="isActionDisabled(opt.action)"
+						[ngClass]="actionButtonClass(opt.action)"
+						(click)="clickAction(opt.action)"
+					>
+						{{ actionButtonLabel(opt.action) }}
+					</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<div class="modal" id="timeModal" [class.active]="modalOpen()">
+		<div class="modal-content" *ngIf="modalAction() as a">
+			<div class="modal-header">
+				<h2 id="modalTitle">{{ typeLabel(a.type) }}</h2>
+				<button class="close-modal" type="button" aria-label="Fechar" (click)="closeModal()">&times;</button>
+			</div>
+			<div class="modal-body">
+				<label>Tempo gasto (HH:MM:SS)</label>
+				<input
+					type="text"
+					id="timeInput"
+					class="time-input"
+					autocomplete="off"
+					inputmode="numeric"
+					[ngModel]="timeInput()"
+					(ngModelChange)="timeInput.set($event)"
+					placeholder="00:30:00"
+				/>
+				<div class="info-text" id="infoText">
+					TMA: {{ secondsToTime(a.tmaSeconds) }}
+					<span *ngIf="resumePausedContext() as ctx">
+						 • Pausado: {{ secondsToTime(state.getPausedEntryById(ctx.key, ctx.entryId)?.accumulatedSeconds || 0) }} (digite o tempo adicional)
+					</span>
+					<span *ngIf="!resumePausedContext() && state.getPausedCountForKey(state.actionKey(a.item, a.type)) > 0">
+						 • Pausados em fila: {{ state.getPausedCountForKey(state.actionKey(a.item, a.type)) }}
+						(último: {{ secondsToTime(state.getPausedSecondsForKey(state.actionKey(a.item, a.type))) }} )
+					</span>
+				</div>
+			</div>
+			<div class="modal-actions">
+				<button class="btn-cancel" type="button" (click)="closeModal()">Cancelar</button>
+				<button class="btn-paralyze" type="button" (click)="paralyzeFromModal()">Paralisar</button>
+				<button class="btn-confirm" type="button" (click)="confirmModal()">Confirmar</button>
+			</div>
+		</div>
+	</div>
+
+	<div class="history" id="history" *ngIf="state.pausedEntriesSorted().length > 0" style="margin-top: 14px;">
+		<div class="muted" style="padding: 8px 0; font-weight: 700;">Contas paralisadas</div>
+		<div class="history-item" *ngFor="let p of state.pausedEntriesSorted()">
+			<div class="history-info">
+				<h4>{{ p.item }} - {{ typeLabel(p.type) }}</h4>
+				<p>Pausado: {{ secondsToTime(p.accumulatedSeconds) }} • TMA: {{ secondsToTime(p.tma) }}</p>
+			</div>
+			<div class="history-actions">
+				<button class="sidebar-action" type="button" style="min-width: 120px;" (click)="resumePaused(p)">Retomar</button>
+				<button class="history-delete" type="button" title="Excluir pausado" aria-label="Excluir pausado" (click)="discardPaused(p)">✕</button>
+			</div>
+		</div>
+	</div>
+
+	<div class="history">
+		<div *ngIf="visibleHistoryTransactions().length === 0" class="muted" style="padding: 12px;">Nenhuma transação ainda.</div>
+
+		<div class="history-item" *ngFor="let t of visibleHistoryTransactions()">
+			<div class="history-info">
+				<h4>{{ t.item }} - {{ typeLabel(t.type) }}</h4>
+				<p>Gasto: {{ secondsToTime(t.timeSpent) }} • TMA: {{ secondsToTime(t.tma) }} • {{ t.timestamp }}</p>
+			</div>
+			<div class="history-actions">
+				<div class="history-time" [ngClass]="diffClass(t.difference)">
+					{{ t.difference >= 0 ? '+' : '' }}{{ secondsToTime(t.difference) }}
+					<div style="font-size:0.8em;color:#666">({{ t.difference >= 0 ? '+' : '-' }}{{ t.creditedMinutes }} min)</div>
+				</div>
+				<button class="history-delete" type="button" title="Excluir lançamento" aria-label="Excluir lançamento" (click)="deleteTx(t)">✕</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- Flow choice modal (Finalize/Paralyze) -->
+	<div class="modal" id="flowChoiceModal" [class.active]="flowChoiceOpen()" aria-hidden="true">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h2 id="flowChoiceTitle">{{ flowChoiceTitle() }}</h2>
+				<button class="close-flow-choice" type="button" aria-label="Fechar" (click)="chooseFlowChoice('cancel')">&times;</button>
+			</div>
+			<div class="modal-body">
+				<div class="info-text" id="flowChoiceText" style="white-space: pre-line;">{{ flowChoiceText() }}</div>
+			</div>
+			<div class="modal-actions">
+				<button class="flow-choice-cancel" type="button" (click)="chooseFlowChoice('cancel')">{{ flowChoiceCancelLabel() }}</button>
+				<button class="flow-choice-paralyze" type="button" (click)="chooseFlowChoice('paralyze')">{{ flowChoiceParalyzeLabel() }}</button>
+				<button class="flow-choice-finalize" type="button" (click)="chooseFlowChoice('finalize')">{{ flowChoiceFinalizeLabel() }}</button>
+			</div>
+		</div>
+	</div>
+	</div>
+
+</div>
+
+<!-- Primeiro prompt (almoço / onboarding) - hardened overlay (no shared .modal CSS) -->
+<div
+	id="onboardingOverlay"
+	class="onboarding-overlay"
+	role="dialog"
+	aria-modal="true"
+	[attr.aria-hidden]="state.onboardingOpen() ? 'false' : 'true'"
+	[class.active]="state.onboardingOpen()"
+	[class.stage-form]="welcomeStage() === 'form'"
+	[class.stage-outro]="welcomeStage() === 'outro'"
+	[class.stage-success]="welcomeSuccess()"
+	[class.is-collapsing]="welcomeCollapsing()"
+	[class.is-outro-running]="welcomeOutroRunning()"
+>
+	<div
+		id="onboardingCard"
+		class="onboarding-card"
+	>
+		<button
+			*ngIf="!state.needsOnboarding()"
+			class="close-lunch-modal"
+			type="button"
+			aria-label="Fechar"
+			(click)="closeOnboarding()"
+		>
+			&times;
+		</button>
+
+		<div id="welcomeGreeting" class="welcome-greeting" aria-live="polite">
+			<span class="welcome-greeting-text">{{ welcomeGreetingText() }}</span>
+		</div>
+
+		<svg class="welcome-success" viewBox="0 0 52 52" aria-hidden="true" focusable="false">
+			<circle class="welcome-success-circle" cx="26" cy="26" r="24" />
+			<path class="welcome-success-check" d="M16 27 L23 34 L37 19" />
+		</svg>
+
+		<div class="welcome-form" aria-label="Configurações iniciais">
+			<div class="welcome-grid">
+				<div class="welcome-card">
+					<label class="welcome-label" for="shiftStartInput">Turno (início)</label>
+					<input
+						type="text"
+						id="shiftStartInput"
+						placeholder="08:00"
+						class="time-input welcome-input"
+						inputmode="numeric"
+						autocomplete="off"
+						[ngModel]="onboardingShiftStart()"
+						(ngModelChange)="onboardingShiftStart.set($event)"
+					/>
+				</div>
+
+				<div class="welcome-card">
+					<label class="welcome-label" for="lunchInput">Almoço (início)</label>
+					<input
+						type="text"
+						id="lunchInput"
+						placeholder="12:00"
+						class="time-input welcome-input"
+						inputmode="numeric"
+						autocomplete="off"
+						[ngModel]="onboardingLunchStart()"
+						(ngModelChange)="onboardingLunchStart.set($event)"
+					/>
+				</div>
+
+				<div class="welcome-card welcome-card--wide">
+					<label class="welcome-check">
+						<input
+							type="checkbox"
+							id="complexaToggle"
+							[ngModel]="onboardingShowComplexa()"
+							(ngModelChange)="onboardingShowComplexa.set($event)"
+						/>
+						<span>Mostrar <strong>Complexas</strong></span>
+					</label>
+				</div>
+			</div>
+
+			<div class="welcome-actions">
+				<button class="btn-lunch-confirm" type="button" [disabled]="welcomeOutroRunning()" (click)="submitOnboarding()">Começar</button>
+			</div>
+		</div>
+	</div>
+</div>
+
+<button
+	id="sidebarToggleBtn"
+	class="floating-settings-btn"
+	type="button"
+	aria-label="Abrir menu"
+	aria-controls="sidebar"
+	[attr.aria-expanded]="sidebarOpen()"
+	(click)="toggleSidebar()"
+	title="Menu"
+>
+	☰
+</button>
+
+<div
+	id="sidebarOverlay"
+	class="sidebar-overlay"
+	[class.is-open]="sidebarShown()"
+	[class.is-closing]="sidebarClosing()"
+	(click)="closeSidebar()"
+	aria-hidden="true"
+></div>
+<aside
+	id="sidebar"
+	class="sidebar"
+	[class.is-open]="sidebarOpen()"
+	[class.is-closing]="sidebarClosing()"
+	[attr.aria-hidden]="sidebarShown() ? 'false' : 'true'"
+>
+	<div class="sidebar-header">
+		<div>
+			<div class="sidebar-title">Ajustes</div>
+			<div class="sidebar-greeting" *ngIf="helloName()">Oi, <span class="sidebar-greeting-name">{{ helloName() }}</span></div>
+			<div class="sidebar-mode-pill" *ngIf="profile.timeTrackerEnabled()">Time Tracker</div>
+		</div>
+			<button id="sidebarCloseBtn" class="sidebar-close" type="button" aria-label="Fechar menu" (click)="closeSidebar()">&times;</button>
+	</div>
+	<div class="sidebar-body">
+		<div class="sidebar-section">
+			<div class="sidebar-section-title">Modos</div>
+
+			<div class="sidebar-row">
+				<span>{{ profile.timeTrackerEnabled() ? 'Flow (obrigatório)' : 'Flow' }}</span>
+				<label class="switch" style="margin-bottom:0;">
+						<input
+							type="checkbox"
+							id="sidebarFlowToggle"
+							[checked]="profile.timeTrackerEnabled() ? true : state.flowModeEnabled()"
+							[disabled]="profile.timeTrackerEnabled()"
+							(change)="toggleFlowMode($any($event.target).checked)"
+						>
+					<span class="slider"></span>
+				</label>
+			</div>
+
+			<div class="sidebar-row">
+				<span>Tema escuro</span>
+				<label class="switch" style="margin-bottom:0;">
+						<input type="checkbox" id="sidebarThemeToggle" [checked]="state.darkThemeEnabled()" (change)="toggleDarkTheme($any($event.target).checked)">
+					<span class="slider"></span>
+				</label>
+			</div>
+
+			<div class="sidebar-row">
+				<span>Complexas</span>
+				<label class="switch" style="margin-bottom:0;">
+						<input type="checkbox" id="sidebarComplexaToggle" [checked]="state.showComplexa()" (change)="toggleComplexa($any($event.target).checked)">
+					<span class="slider"></span>
+				</label>
+			</div>
+		</div>
+
+		<div class="sidebar-section">
+			<div class="sidebar-section-title">Noir</div>
+
+			<div class="sidebar-row">
+				<span>Ativar</span>
+				<label class="switch" style="margin-bottom:0;">
+					<input
+						type="checkbox"
+						id="sidebarCompanionToggle"
+						[checked]="!companion.hidden()"
+						(change)="setCompanionEnabled($any($event.target).checked)"
+					>
+					<span class="slider"></span>
+				</label>
+			</div>
+
+			<button class="sidebar-action" type="button" (click)="companion.showHelp()" [disabled]="companion.hidden()">O que eu faço?</button>
+			<button class="sidebar-action" type="button" (click)="companion.showTip()" [disabled]="companion.hidden()">Dica rápida</button>
+			<button class="sidebar-action" type="button" (click)="companion.showMotivation()" [disabled]="companion.hidden()">Motivação</button>
+			<button class="sidebar-action" type="button" (click)="companion.showShortcuts()" [disabled]="companion.hidden()">Atalhos</button>
+			<button class="sidebar-action" type="button" (click)="companion.showTimeTrackerInfo()" [disabled]="companion.hidden()">Time Tracker</button>
+
+		</div>
+
+		<div class="sidebar-section">
+			<div class="sidebar-section-title">Modo time tracker</div>
+
+			<div class="sidebar-tt-status" *ngIf="profile.timeTrackerEnabled()">
+				Ativado
+			</div>
+
+			<div class="sidebar-tt-row" *ngIf="!profile.timeTrackerEnabled()">
+				<input
+					class="sidebar-tt-input"
+					type="password"
+					placeholder="Código especial"
+					[ngModel]="timeTrackerCodeInput()"
+					(ngModelChange)="timeTrackerCodeInput.set($event)"
+					[disabled]="timeTrackerSaving()"
+				/>
+				<button class="sidebar-action" type="button" (click)="submitTimeTrackerCode()" [disabled]="timeTrackerSaving()">
+					{{ timeTrackerSaving() ? 'Validando…' : 'Ativar' }}
+				</button>
+			</div>
+
+			<button
+				*ngIf="profile.timeTrackerEnabled()"
+				class="sidebar-action sidebar-action--danger"
+				type="button"
+				(click)="disableTimeTrackerMode()"
+				[disabled]="timeTrackerSaving()"
+			>
+				Desativar
+			</button>
+
+			<div class="sidebar-tt-msg ok" *ngIf="timeTrackerSuccess()">{{ timeTrackerSuccess() }}</div>
+			<div class="sidebar-tt-msg err" *ngIf="timeTrackerError()">{{ timeTrackerError() }}</div>
+		</div>
+
+		<div class="sidebar-section">
+			<div class="sidebar-section-title">Ações</div>
+				<button id="sidebarOpenOnboardingBtn" class="sidebar-action" type="button" (click)="openOnboardingFromSettings()">Configurar turno / almoço</button>
+				<button id="sidebarExportBtn" class="sidebar-action" type="button" (click)="exportEndDay()">Finalizar dia (Exportar)</button>
+				<a class="sidebar-action" href="/report" (click)="goToReport($event)" style="text-decoration:none; display:block; text-align:center;" title="Abrir relatório">Ir para Relatório</a>
+				<a *ngIf="profile.isAdmin()" class="sidebar-action" href="/admin" (click)="goToAdmin($event)" style="text-decoration:none; display:block; text-align:center;" title="Abrir painel admin">Painel (Admin)</a>
+				<button id="sidebarLogoutBtn" class="sidebar-action sidebar-action--danger" type="button" (click)="logout()">Sair</button>
+		</div>
+	</div>
+</aside>
