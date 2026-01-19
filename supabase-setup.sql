@@ -18,6 +18,32 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 -- Enable RLS
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
+-- =====================================================
+-- Helper: admin check WITHOUT RLS recursion
+-- =====================================================
+-- IMPORTANT: policies on public.profiles must NOT query public.profiles directly,
+-- otherwise Postgres can raise: "infinite recursion detected in policy for relation profiles".
+-- This function disables row_security inside its body to safely read the flag.
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v BOOLEAN;
+BEGIN
+  PERFORM set_config('row_security', 'off', true);
+  SELECT p.is_admin INTO v
+  FROM public.profiles p
+  WHERE p.user_id = auth.uid();
+  RETURN COALESCE(v, false);
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.is_admin() TO anon, authenticated;
+
 -- Policies for profiles table
 DROP POLICY IF EXISTS "Users can read their own profile" ON public.profiles;
 CREATE POLICY "Users can read their own profile"
@@ -27,12 +53,7 @@ CREATE POLICY "Users can read their own profile"
 DROP POLICY IF EXISTS "Admins can read all profiles" ON public.profiles;
 CREATE POLICY "Admins can read all profiles"
   ON public.profiles FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE user_id = auth.uid() AND is_admin = true
-    )
-  );
+  USING (public.is_admin());
 
 DROP POLICY IF EXISTS "Users can update their own profile" ON public.profiles;
 CREATE POLICY "Users can update their own profile"
@@ -79,12 +100,7 @@ CREATE POLICY "Users can read their own transactions"
 DROP POLICY IF EXISTS "Admins can read all transactions" ON public.transactions;
 CREATE POLICY "Admins can read all transactions"
   ON public.transactions FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE user_id = auth.uid() AND is_admin = true
-    )
-  );
+  USING (public.is_admin());
 
 DROP POLICY IF EXISTS "Users can insert their own transactions" ON public.transactions;
 CREATE POLICY "Users can insert their own transactions"
@@ -180,12 +196,7 @@ CREATE POLICY "All authenticated users can read broadcasts"
 DROP POLICY IF EXISTS "Admins can insert broadcasts" ON public.broadcasts;
 CREATE POLICY "Admins can insert broadcasts"
   ON public.broadcasts FOR INSERT
-  WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE user_id = auth.uid() AND is_admin = true
-    )
-  );
+  WITH CHECK (public.is_admin());
 
 -- =====================================================
 -- TRIGGER: Auto-create profile on signup
