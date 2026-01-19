@@ -490,7 +490,12 @@ export class AppStateService {
     this.applyBodyClasses();
 
     if (this.cloudEnabled()) {
-      void this.cloud!.upsertSettingsFromState(this.exportSettingsForCloud());
+      void this.cloud!
+        .upsertSettingsFromState(this.exportSettingsForCloud())
+        .catch((e) => {
+          // eslint-disable-next-line no-console
+          console.warn('[AppState] cloud upsertSettingsFromState failed', e);
+        });
     }
   }
 
@@ -499,7 +504,12 @@ export class AppStateService {
     this.storage.setShowComplexa(Boolean(enabled));
 
     if (this.cloudEnabled()) {
-      void this.cloud!.upsertSettingsFromState(this.exportSettingsForCloud());
+      void this.cloud!
+        .upsertSettingsFromState(this.exportSettingsForCloud())
+        .catch((e) => {
+          // eslint-disable-next-line no-console
+          console.warn('[AppState] cloud upsertSettingsFromState failed', e);
+        });
     }
   }
 
@@ -525,7 +535,12 @@ export class AppStateService {
     this.applyBodyClasses();
 
     if (this.cloudEnabled()) {
-      void this.cloud!.upsertSettingsFromState(this.exportSettingsForCloud());
+      void this.cloud!
+        .upsertSettingsFromState(this.exportSettingsForCloud())
+        .catch((e) => {
+          // eslint-disable-next-line no-console
+          console.warn('[AppState] cloud upsertSettingsFromState failed', e);
+        });
     }
   }
 
@@ -854,7 +869,12 @@ export class AppStateService {
     this.applyBodyClasses();
 
     if (this.cloudEnabled()) {
-      void this.cloud!.upsertSettingsFromState(this.exportSettingsForCloud());
+      void this.cloud!
+        .upsertSettingsFromState(this.exportSettingsForCloud())
+        .catch((e) => {
+          // eslint-disable-next-line no-console
+          console.warn('[AppState] cloud upsertSettingsFromState failed', e);
+        });
     }
   }
 
@@ -954,8 +974,10 @@ export class AppStateService {
           this.recomputeBalanceFromTransactions();
           this.persist();
         })
-        .catch(() => {
-          // ignore (will remain local-only)
+        .catch((e) => {
+          // Keep local-only, but surface the reason in devtools.
+          // eslint-disable-next-line no-console
+          console.warn('[AppState] cloud insertTransactionFromState failed (staying local-only)', e);
         });
     }
   }

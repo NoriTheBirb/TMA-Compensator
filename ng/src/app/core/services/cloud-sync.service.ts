@@ -4,6 +4,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 import type { LegacyTransaction } from '../models/transaction';
 import { AppStateService } from '../state/app-state.service';
 import { AuthService } from './auth.service';
+import { CompanionService } from './companion.service';
 import { SupabaseService } from './supabase.service';
 
 type DbTransactionRow = {
@@ -36,9 +37,12 @@ export class CloudSyncService {
   private txChannel: RealtimeChannel | null = null;
   private settingsChannel: RealtimeChannel | null = null;
 
+  private lastUserFacingErrorAtMs = 0;
+
   constructor(
     private readonly sb: SupabaseService,
     private readonly auth: AuthService,
+    private readonly companion: CompanionService,
     private readonly injector: Injector,
   ) {
     effect(() => {
@@ -59,6 +63,40 @@ export class CloudSyncService {
 
   private get state(): AppStateService {
     return this.injector.get(AppStateService);
+  }
+
+  private toIsoOrNull(raw: unknown): string | null {
+    const s = String(raw ?? '').trim();
+    if (!s) return null;
+    const ms = Date.parse(s);
+    if (!Number.isFinite(ms)) return null;
+    try {
+      return new Date(ms).toISOString();
+    } catch {
+      return null;
+    }
+  }
+
+  private notifyCloudError(context: string, err: unknown): void {
+    // Avoid spamming the user on repeated background sync failures.
+    const now = Date.now();
+    if (now - this.lastUserFacingErrorAtMs < 12_000) return;
+    this.lastUserFacingErrorAtMs = now;
+
+    const anyErr = err as any;
+    const status = Number(anyErr?.status);
+    const message = String(anyErr?.message || anyErr?.error || anyErr?.error_description || '').trim();
+    const details = String(anyErr?.details || '').trim();
+
+    const parts = [message, details].filter(Boolean);
+    const base = parts.join(' | ') || 'Falha ao comunicar com o Supabase.';
+    const extra = Number.isFinite(status) ? ` (HTTP ${status})` : '';
+
+    try {
+      this.companion.speak(`${context}: ${base}${extra}`, 'scold', { title: 'Sync', autoCloseMs: 9000 });
+    } catch {
+      // ignore
+    }
   }
 
   private stop(): void {
@@ -101,7 +139,7 @@ export class CloudSyncService {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'transactions', filter: `user_id=eq.${userId}` },
-        payload => {
+        (payload: any) => {
           try {
             if (payload.eventType === 'INSERT') this.applyRemoteInsert(payload.new as any);
             if (payload.eventType === 'DELETE') this.applyRemoteDelete(payload.old as any);
@@ -124,7 +162,7 @@ export class CloudSyncService {
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'settings', filter: `user_id=eq.${userId}` },
-          payload => {
+          (payload: any) => {
             try {
               if (payload.eventType === 'INSERT') this.applyRemoteSettings(payload.new as any);
               if (payload.eventType === 'UPDATE') this.applyRemoteSettings(payload.new as any);
@@ -194,7 +232,7 @@ export class CloudSyncService {
       const count = rows?.length || 0;
       console.log(`[CloudSync] Pulled ${count} transactions successfully`);
 
-      const tx = (rows || []).map(r => this.mapRowToTx(r as any));
+      const tx = (rows || []).map((r: any) => this.mapRowToTx(r as any));
       this.runRemote(() => {
         this.state.replaceTransactionsFromCloud(tx);
       });
@@ -239,12 +277,14 @@ export class CloudSyncService {
 
       if (error) {
         console.error('[CloudSync] Failed to upsert settings:', error);
+        this.notifyCloudError('Falha ao salvar configurações na nuvem', error);
         throw error;
       }
       
       console.log('[CloudSync] Settings upserted successfully');
     } catch (error) {
       console.error('[CloudSync] Exception upserting settings:', error);
+      this.notifyCloudError('Falha ao salvar configurações na nuvem', error);
       throw error;
     }
   }
@@ -268,6 +308,8 @@ export class CloudSyncService {
       return null;
     }
 
+    const clientTimestampIso = this.toIsoOrNull((tx as any)?.timestamp);
+
     try {
       const { data, error } = await this.sb
         .supabase
@@ -279,7 +321,8 @@ export class CloudSyncService {
           tma: Math.max(0, Math.floor(Number(tx.tma) || 0)),
           time_spent: Math.max(0, Math.floor(Number(tx.timeSpent) || 0)),
           source: String(tx.source || ''),
-          client_timestamp: String(tx.timestamp || ''),
+          // IMPORTANT: DB column is timestamptz; do not send empty/invalid strings.
+          client_timestamp: clientTimestampIso,
           assistant: tx.assistant ?? null,
         })
         .select('*')
@@ -287,6 +330,7 @@ export class CloudSyncService {
 
       if (error) {
         console.error('[CloudSync] Failed to insert transaction:', error);
+        this.notifyCloudError('Falha ao salvar conta na nuvem', error);
         throw error;
       }
       if (!data) {
@@ -298,6 +342,7 @@ export class CloudSyncService {
       return this.mapRowToTx(data as any);
     } catch (error) {
       console.error('[CloudSync] Exception inserting transaction:', error);
+      this.notifyCloudError('Falha ao salvar conta na nuvem', error);
       throw error;
     }
   }
