@@ -1,23 +1,19 @@
 -- TMA Compensator - Supabase Database Setup
 -- Run this SQL in your Supabase SQL Editor
 
--- Enable UUID extension
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
 -- =====================================================
 -- PROFILES TABLE
 -- =====================================================
 CREATE TABLE IF NOT EXISTS public.profiles (
   user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  username TEXT NOT NULL UNIQUE,
+  username TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   is_admin BOOLEAN NOT NULL DEFAULT false,
   time_tracker_enabled BOOLEAN NOT NULL DEFAULT false,
   time_tracker_enabled_at TIMESTAMPTZ,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  CONSTRAINT profiles_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
 );
-
--- Index for faster lookups
-CREATE INDEX IF NOT EXISTS idx_profiles_username ON public.profiles(username);
 
 -- Enable RLS
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
@@ -56,16 +52,17 @@ CREATE TABLE IF NOT EXISTS public.transactions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   item TEXT NOT NULL,
+  type TEXT NOT NULL,gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  item TEXT NOT NULL,
   type TEXT NOT NULL,
   tma INTEGER NOT NULL DEFAULT 0,
   time_spent INTEGER NOT NULL DEFAULT 0,
   source TEXT,
-  client_timestamp TEXT,
+  client_timestamp TIMESTAMPTZ,
   assistant JSONB,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- Indexes for better performance
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT transactions_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id
 CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON public.transactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_created_at ON public.transactions(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_transactions_user_created ON public.transactions(user_id, created_at DESC);
@@ -115,7 +112,8 @@ CREATE TABLE IF NOT EXISTS public.settings (
   lunch_end_seconds INTEGER,
   show_complexa BOOLEAN NOT NULL DEFAULT false,
   dark_theme_enabled BOOLEAN NOT NULL DEFAULT false,
-  lunch_style_enabled BOOLEAN NOT NULL DEFAULT true,
+  lunch_style_enabled BOOLEAN NOT NULL DEFAULT ,
+  CONSTRAINT settings_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)true,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -139,14 +137,31 @@ CREATE POLICY "Users can update their own settings"
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
+-- TIME TRACKER CODES TABLE
+-- =====================================================
+CREATE TABLE IF NOT EXISTS public.time_tracker_codes (
+  code_hash TEXT PRIMARY KEY,
+  active BOOLEAN NOT NULL DEFAULT true,
+  notes TEXT,
+  assigned_user_id UUID REFERENCES auth.users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT time_tracker_codes_assigned_user_id_fkey FOREIGN KEY (assigned_user_id) REFERENCES auth.users(id)
+);
+
+-- Enable RLS
+ALTER TABLE public.time_tracker_codes ENABLE ROW LEVEL SECURITY;
+
 -- =====================================================
 -- BROADCASTS TABLE
 -- =====================================================
 CREATE TABLE IF NOT EXISTS public.broadcasts (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   message TEXT NOT NULL,
   kind TEXT NOT NULL DEFAULT 'info',
-  created_by UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  created_by UUID REFERENCES auth.users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by_username TEXT,
+  CONSTRAINT broadcasts_created_by_fkey FOREIGN KEY (created_by) REFERENCES auth.users(idrs(id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
