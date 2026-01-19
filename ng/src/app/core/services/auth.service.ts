@@ -94,6 +94,31 @@ export class AuthService {
     if (error) {
       throw new Error(`Supabase signup failed for generated email "${email}": ${error.message}`);
     }
+
+    // Create profile entry if user was created successfully
+    if (data?.user) {
+      try {
+        const { error: profileError } = await this.sb.supabase
+          .from('profiles')
+          .insert({
+            user_id: data.user.id,
+            username: u,
+            is_admin: false,
+            time_tracker_enabled: false,
+            time_tracker_enabled_at: null,
+            updated_at: new Date().toISOString(),
+          });
+        
+        if (profileError) {
+          // Log but don't fail the signup - profile might already exist or be created by trigger
+          console.warn('[AuthService] Failed to create profile:', profileError);
+        }
+      } catch (profileErr) {
+        // Log but don't fail the signup
+        console.warn('[AuthService] Exception creating profile:', profileErr);
+      }
+    }
+
     return { signedIn: Boolean(data?.session), email };
   }
 

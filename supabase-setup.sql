@@ -1,0 +1,261 @@
+-- TMA Compensator - Supabase Database Setup
+-- Run this SQL in your Supabase SQL Editor
+
+-- Enable UUID extension
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- =====================================================
+-- PROFILES TABLE
+-- =====================================================
+CREATE TABLE IF NOT EXISTS public.profiles (
+  user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  username TEXT NOT NULL UNIQUE,
+  is_admin BOOLEAN NOT NULL DEFAULT false,
+  time_tracker_enabled BOOLEAN NOT NULL DEFAULT false,
+  time_tracker_enabled_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Index for faster lookups
+CREATE INDEX IF NOT EXISTS idx_profiles_username ON public.profiles(username);
+
+-- Enable RLS
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+-- Policies for profiles table
+DROP POLICY IF EXISTS "Users can read their own profile" ON public.profiles;
+CREATE POLICY "Users can read their own profile"
+  ON public.profiles FOR SELECT
+  USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Admins can read all profiles" ON public.profiles;
+CREATE POLICY "Admins can read all profiles"
+  ON public.profiles FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE user_id = auth.uid() AND is_admin = true
+    )
+  );
+
+DROP POLICY IF EXISTS "Users can update their own profile" ON public.profiles;
+CREATE POLICY "Users can update their own profile"
+  ON public.profiles FOR UPDATE
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can insert their own profile" ON public.profiles;
+CREATE POLICY "Users can insert their own profile"
+  ON public.profiles FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+-- =====================================================
+-- TRANSACTIONS TABLE
+-- =====================================================
+CREATE TABLE IF NOT EXISTS public.transactions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  item TEXT NOT NULL,
+  type TEXT NOT NULL,
+  tma INTEGER NOT NULL DEFAULT 0,
+  time_spent INTEGER NOT NULL DEFAULT 0,
+  source TEXT,
+  client_timestamp TEXT,
+  assistant JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Indexes for better performance
+CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON public.transactions(user_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_created_at ON public.transactions(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_transactions_user_created ON public.transactions(user_id, created_at DESC);
+
+-- Enable RLS
+ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
+
+-- Policies for transactions table
+DROP POLICY IF EXISTS "Users can read their own transactions" ON public.transactions;
+CREATE POLICY "Users can read their own transactions"
+  ON public.transactions FOR SELECT
+  USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Admins can read all transactions" ON public.transactions;
+CREATE POLICY "Admins can read all transactions"
+  ON public.transactions FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE user_id = auth.uid() AND is_admin = true
+    )
+  );
+
+DROP POLICY IF EXISTS "Users can insert their own transactions" ON public.transactions;
+CREATE POLICY "Users can insert their own transactions"
+  ON public.transactions FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can update their own transactions" ON public.transactions;
+CREATE POLICY "Users can update their own transactions"
+  ON public.transactions FOR UPDATE
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can delete their own transactions" ON public.transactions;
+CREATE POLICY "Users can delete their own transactions"
+  ON public.transactions FOR DELETE
+  USING (auth.uid() = user_id);
+
+-- =====================================================
+-- SETTINGS TABLE
+-- =====================================================
+CREATE TABLE IF NOT EXISTS public.settings (
+  user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  shift_start_seconds INTEGER NOT NULL DEFAULT 28800,
+  lunch_start_seconds INTEGER,
+  lunch_end_seconds INTEGER,
+  show_complexa BOOLEAN NOT NULL DEFAULT false,
+  dark_theme_enabled BOOLEAN NOT NULL DEFAULT false,
+  lunch_style_enabled BOOLEAN NOT NULL DEFAULT true,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Enable RLS
+ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
+
+-- Policies for settings table
+DROP POLICY IF EXISTS "Users can read their own settings" ON public.settings;
+CREATE POLICY "Users can read their own settings"
+  ON public.settings FOR SELECT
+  USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can insert their own settings" ON public.settings;
+CREATE POLICY "Users can insert their own settings"
+  ON public.settings FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can update their own settings" ON public.settings;
+CREATE POLICY "Users can update their own settings"
+  ON public.settings FOR UPDATE
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+-- =====================================================
+-- BROADCASTS TABLE
+-- =====================================================
+CREATE TABLE IF NOT EXISTS public.broadcasts (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  message TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'info',
+  created_by UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Index for faster queries
+CREATE INDEX IF NOT EXISTS idx_broadcasts_created_at ON public.broadcasts(created_at DESC);
+
+-- Enable RLS
+ALTER TABLE public.broadcasts ENABLE ROW LEVEL SECURITY;
+
+-- Policies for broadcasts table
+DROP POLICY IF EXISTS "All authenticated users can read broadcasts" ON public.broadcasts;
+CREATE POLICY "All authenticated users can read broadcasts"
+  ON public.broadcasts FOR SELECT
+  USING (auth.uid() IS NOT NULL);
+
+DROP POLICY IF EXISTS "Admins can insert broadcasts" ON public.broadcasts;
+CREATE POLICY "Admins can insert broadcasts"
+  ON public.broadcasts FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE user_id = auth.uid() AND is_admin = true
+    )
+  );
+
+-- =====================================================
+-- TRIGGER: Auto-create profile on signup
+-- =====================================================
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (user_id, username, is_admin, time_tracker_enabled, updated_at)
+  VALUES (
+    NEW.id,
+    COALESCE(NEW.raw_user_meta_data->>'username', SPLIT_PART(NEW.email, '@', 1)),
+    false,
+    false,
+    NOW()
+  )
+  ON CONFLICT (user_id) DO NOTHING;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Drop existing trigger if it exists
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+
+-- Create trigger
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW
+  EXECUTE FUNCTION public.handle_new_user();
+
+-- =====================================================
+-- RPC: Enable time tracker
+-- =====================================================
+CREATE OR REPLACE FUNCTION public.enable_time_tracker(input_code TEXT)
+RETURNS BOOLEAN AS $$
+DECLARE
+  expected_code TEXT := 'TT2024';
+  current_user_id UUID;
+BEGIN
+  current_user_id := auth.uid();
+  
+  IF current_user_id IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+  
+  IF input_code != expected_code THEN
+    RETURN false;
+  END IF;
+  
+  UPDATE public.profiles
+  SET 
+    time_tracker_enabled = true,
+    time_tracker_enabled_at = NOW(),
+    updated_at = NOW()
+  WHERE user_id = current_user_id;
+  
+  RETURN true;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- =====================================================
+-- Grant necessary permissions
+-- =====================================================
+GRANT USAGE ON SCHEMA public TO anon, authenticated;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO anon, authenticated;
+
+-- =====================================================
+-- Create first admin user (OPTIONAL - adjust as needed)
+-- =====================================================
+-- Uncomment and modify this section to create your first admin user
+-- Replace 'YOUR_USER_ID_HERE' with the actual user_id from auth.users table
+
+-- UPDATE public.profiles
+-- SET is_admin = true
+-- WHERE user_id = 'YOUR_USER_ID_HERE';
+
+-- =====================================================
+-- Verify setup
+-- =====================================================
+-- Run these queries to verify everything is set up correctly:
+
+-- SELECT * FROM public.profiles;
+-- SELECT * FROM public.transactions LIMIT 10;
+-- SELECT * FROM public.settings;
+-- SELECT * FROM public.broadcasts;
+
+NOTIFY pgrst, 'reload schema';

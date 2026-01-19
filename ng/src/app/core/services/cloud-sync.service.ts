@@ -78,15 +78,24 @@ export class CloudSyncService {
   }
 
   private async start(userId: string): Promise<void> {
-    if (!this.sb.ready()) return;
+    if (!this.sb.ready()) {
+      console.warn('[CloudSync] Cannot start: Supabase not ready');
+      return;
+    }
+
+    console.log('[CloudSync] Starting cloud sync for user:', userId);
 
     // Load initial snapshot.
     await this.pullAll(userId);
 
     // Subscribe to realtime updates.
-    if (this.txChannel && this.settingsChannel) return;
+    if (this.txChannel && this.settingsChannel) {
+      console.log('[CloudSync] Realtime channels already active');
+      return;
+    }
 
     if (!this.txChannel) {
+      console.log('[CloudSync] Subscribing to transactions realtime channel');
       const channel = this.sb
         .channel('tx-live')
       .on(
@@ -105,9 +114,11 @@ export class CloudSyncService {
 
       this.txChannel = channel;
       void channel.subscribe();
+      console.log('[CloudSync] Transactions realtime channel subscribed');
     }
 
     if (!this.settingsChannel) {
+      console.log('[CloudSync] Subscribing to settings realtime channel');
       const channel = this.sb
         .channel('settings-live')
         .on(
@@ -125,6 +136,7 @@ export class CloudSyncService {
 
       this.settingsChannel = channel;
       void channel.subscribe();
+      console.log('[CloudSync] Settings realtime channel subscribed');
     }
   }
 
@@ -135,7 +147,12 @@ export class CloudSyncService {
   }
 
   private async pullAll(userId: string): Promise<void> {
-    if (!this.sb.ready()) return;
+    if (!this.sb.ready()) {
+      console.warn('[CloudSync] Cannot pull data: Supabase not ready');
+      return;
+    }
+
+    console.log('[CloudSync] Starting initial data pull for user:', userId);
 
     // Settings (optional)
     try {
@@ -147,9 +164,12 @@ export class CloudSyncService {
         .maybeSingle();
 
       if (settings) {
+        console.log('[CloudSync] Pulled settings successfully');
         this.runRemote(() => {
           this.state.applyCloudSettings(settings as DbSettingsRow);
         });
+      } else {
+        console.log('[CloudSync] No settings found for user');
       }
     } catch (e) {
       // eslint-disable-next-line no-console
@@ -158,13 +178,21 @@ export class CloudSyncService {
 
     // Transactions
     try {
-      const { data: rows } = await this.sb
+      const { data: rows, error } = await this.sb
         .supabase
         .from('transactions')
         .select('*')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .limit(5000);
+
+      if (error) {
+        console.error('[CloudSync] Error pulling transactions:', error);
+        throw error;
+      }
+
+      const count = rows?.length || 0;
+      console.log(`[CloudSync] Pulled ${count} transactions successfully`);
 
       const tx = (rows || []).map(r => this.mapRowToTx(r as any));
       this.runRemote(() => {
@@ -185,53 +213,93 @@ export class CloudSyncService {
     lunchStyleEnabled: boolean;
   }): Promise<void> {
     const userId = this.auth.userId();
-    if (!userId) return;
-    if (!this.sb.ready()) return;
-    if (this.isApplyingRemote()) return;
+    if (!userId) {
+      console.warn('[CloudSync] Cannot upsert settings: no userId');
+      return;
+    }
+    if (!this.sb.ready()) {
+      console.warn('[CloudSync] Cannot upsert settings: Supabase not ready');
+      return;
+    }
+    if (this.isApplyingRemote()) {
+      return;
+    }
 
-    const { error } = await this.sb.supabase.from('settings').upsert({
-      user_id: userId,
-      shift_start_seconds: payload.shiftStartSeconds,
-      lunch_start_seconds: payload.lunchStartSeconds,
-      lunch_end_seconds: payload.lunchEndSeconds,
-      show_complexa: payload.showComplexa,
-      dark_theme_enabled: payload.darkThemeEnabled,
-      lunch_style_enabled: payload.lunchStyleEnabled,
-      updated_at: new Date().toISOString(),
-    });
+    try {
+      const { error } = await this.sb.supabase.from('settings').upsert({
+        user_id: userId,
+        shift_start_seconds: payload.shiftStartSeconds,
+        lunch_start_seconds: payload.lunchStartSeconds,
+        lunch_end_seconds: payload.lunchEndSeconds,
+        show_complexa: payload.showComplexa,
+        dark_theme_enabled: payload.darkThemeEnabled,
+        lunch_style_enabled: payload.lunchStyleEnabled,
+        updated_at: new Date().toISOString(),
+      });
 
-    if (error) throw error;
+      if (error) {
+        console.error('[CloudSync] Failed to upsert settings:', error);
+        throw error;
+      }
+      
+      console.log('[CloudSync] Settings upserted successfully');
+    } catch (error) {
+      console.error('[CloudSync] Exception upserting settings:', error);
+      throw error;
+    }
   }
 
   async insertTransactionFromState(tx: LegacyTransaction): Promise<LegacyTransaction | null> {
     const userId = this.auth.userId();
-    if (!userId) return null;
-    if (!this.sb.ready()) return null;
-    if (this.isApplyingRemote()) return null;
+    if (!userId) {
+      console.warn('[CloudSync] Cannot insert transaction: no userId');
+      return null;
+    }
+    if (!this.sb.ready()) {
+      console.warn('[CloudSync] Cannot insert transaction: Supabase not ready');
+      return null;
+    }
+    if (this.isApplyingRemote()) {
+      return null;
+    }
 
     // Only insert if it isn't already a cloud row.
-    if (tx.id && !String(tx.id).startsWith('local-')) return null;
+    if (tx.id && !String(tx.id).startsWith('local-')) {
+      return null;
+    }
 
-    const { data, error } = await this.sb
-      .supabase
-      .from('transactions')
-      .insert({
-        user_id: userId,
-        item: tx.item,
-        type: String(tx.type),
-        tma: Math.max(0, Math.floor(Number(tx.tma) || 0)),
-        time_spent: Math.max(0, Math.floor(Number(tx.timeSpent) || 0)),
-        source: String(tx.source || ''),
-        client_timestamp: String(tx.timestamp || ''),
-        assistant: tx.assistant ?? null,
-      })
-      .select('*')
-      .single();
+    try {
+      const { data, error } = await this.sb
+        .supabase
+        .from('transactions')
+        .insert({
+          user_id: userId,
+          item: tx.item,
+          type: String(tx.type),
+          tma: Math.max(0, Math.floor(Number(tx.tma) || 0)),
+          time_spent: Math.max(0, Math.floor(Number(tx.timeSpent) || 0)),
+          source: String(tx.source || ''),
+          client_timestamp: String(tx.timestamp || ''),
+          assistant: tx.assistant ?? null,
+        })
+        .select('*')
+        .single();
 
-    if (error) throw error;
-    if (!data) return null;
+      if (error) {
+        console.error('[CloudSync] Failed to insert transaction:', error);
+        throw error;
+      }
+      if (!data) {
+        console.warn('[CloudSync] Insert succeeded but no data returned');
+        return null;
+      }
 
-    return this.mapRowToTx(data as any);
+      console.log('[CloudSync] Transaction inserted successfully:', data.id);
+      return this.mapRowToTx(data as any);
+    } catch (error) {
+      console.error('[CloudSync] Exception inserting transaction:', error);
+      throw error;
+    }
   }
 
   async deleteTransactionFromState(tx: LegacyTransaction): Promise<void> {
