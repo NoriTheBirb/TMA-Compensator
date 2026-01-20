@@ -141,9 +141,11 @@ export class AppStateService {
   readonly turnoWorkLeftHuman = computed(() => secondsToHuman(this.remainingWorkSeconds()));
 
   readonly quotaUnitsDone = computed(() => {
-    const list = this.transactions() || [];
+    const list = this.transactionsToday() || [];
     let units = 0;
     for (const t of list) {
+      const type = String((t as any)?.type || '').trim();
+      if (type === TIME_TRACKER_TYPE) continue;
       const item = String((t as any)?.item || '');
       units += quotaWeightForItem(item);
     }
@@ -152,7 +154,9 @@ export class AppStateService {
   readonly quotaUnitsRemaining = computed(() => Math.max(0, DAILY_QUOTA - this.quotaUnitsDone()));
 
   readonly assistantKpis = computed(() => {
-    const tx = this.transactions() || [];
+    const txAllToday = this.transactionsToday() || [];
+    // KPIs/Quota are about real accounts, not Time Tracker entries.
+    const tx = txAllToday.filter(t => String((t as any)?.type || '').trim() !== TIME_TRACKER_TYPE);
     const doneTx = tx.length;
 
     const doneUnits = this.quotaUnitsDone();
