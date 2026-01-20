@@ -12,6 +12,8 @@ export interface LegacyTransaction {
   id?: string;
   /** Cloud created-at timestamp (ISO). */
   createdAtIso?: string;
+  /** Local day bucket (YYYY-MM-DD). Used to avoid counting previous days in today's saldo/history. */
+  dayKey?: string;
   item: string;
   type: TransactionType | string;
   tma: number;

@@ -1,4 +1,4 @@
-import { Injectable, signal, effect } from '@angular/core';
+import { Injectable, signal, effect, computed } from '@angular/core';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 import { AuthService } from './auth.service';
@@ -20,6 +20,16 @@ type DialogueTone = 'normal' | 'scold';
 const LS_HIDDEN = 'tma_companion_hidden_v1';
 const LS_NUDGE_PREFIX = 'tma_companion_nudge_';
 const LS_LAST_BROADCAST_ID = 'tma_last_broadcast_id_v1';
+const LS_UNREAD_BROADCASTS = 'tma_unread_broadcasts_v1';
+const LS_RECENT_BROADCASTS = 'tma_recent_broadcasts_v1';
+
+type BroadcastMsg = {
+  id: string;
+  message: string;
+  kind: string;
+  created_at: string;
+  created_by_username: string;
+};
 
 function lsGetBool(key: string, fallback: boolean): boolean {
   try {
@@ -71,6 +81,19 @@ export class CompanionService {
 
   private broadcastsRealtime?: RealtimeChannel;
   private broadcastsPollTimer: number | null = null;
+
+  private broadcastPlaybackTimer: number | null = null;
+
+  readonly unreadBroadcasts = signal<BroadcastMsg[]>(this.loadBroadcastList(LS_UNREAD_BROADCASTS));
+  readonly recentBroadcasts = signal<BroadcastMsg[]>(this.loadBroadcastList(LS_RECENT_BROADCASTS));
+  readonly unreadBroadcastCount = computed(() => this.unreadBroadcasts().length);
+  readonly unreadBadgeText = computed(() => {
+    const n = this.unreadBroadcastCount();
+    if (n <= 0) return '';
+    if (n > 9) return '9+';
+    return String(n);
+  });
+  readonly canReplayBroadcasts = computed(() => this.recentBroadcasts().length > 0);
 
   constructor(
     private readonly sb: SupabaseService,
@@ -221,30 +244,74 @@ export class CompanionService {
     }
   }
 
-  private showBroadcastRow(row: any, opts?: { silent?: boolean }): void {
+  private loadBroadcastList(key: string): BroadcastMsg[] {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return [];
+      const arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) return [];
+      return arr
+        .map((r: any) => this.normalizeBroadcastRow(r))
+        .filter((r: BroadcastMsg | null): r is BroadcastMsg => Boolean(r));
+    } catch {
+      return [];
+    }
+  }
+
+  private saveBroadcastList(key: string, rows: BroadcastMsg[]): void {
+    try {
+      localStorage.setItem(key, JSON.stringify(Array.isArray(rows) ? rows : []));
+    } catch {
+      // ignore
+    }
+  }
+
+  private normalizeBroadcastRow(row: any): BroadcastMsg | null {
     const id = String(row?.id || '').trim();
-    if (!id) return;
+    const msg = String(row?.message || '').trim();
+    if (!id || !msg) return null;
+
+    return {
+      id,
+      message: msg,
+      kind: String(row?.kind || 'info').trim().toLowerCase(),
+      created_at: String(row?.created_at || '').trim(),
+      created_by_username: String(row?.created_by_username || '').trim(),
+    };
+  }
+
+  private pushRecentBroadcast(b: BroadcastMsg): void {
+    const prev = this.recentBroadcasts();
+    const next = [b, ...prev.filter((x) => x.id !== b.id)].slice(0, 30);
+    this.recentBroadcasts.set(next);
+    this.saveBroadcastList(LS_RECENT_BROADCASTS, next);
+  }
+
+  private pushUnreadBroadcast(b: BroadcastMsg): void {
+    const prev = this.unreadBroadcasts();
+    if (prev.some((x) => x.id === b.id)) return;
+    const next = [...prev, b].slice(-30);
+    this.unreadBroadcasts.set(next);
+    this.saveBroadcastList(LS_UNREAD_BROADCASTS, next);
+  }
+
+  private enqueueBroadcastRow(row: any, opts?: { silent?: boolean }): void {
+    const normalized = this.normalizeBroadcastRow(row);
+    if (!normalized) return;
 
     const last = this.getLastBroadcastId();
-    if (last && last === id) return;
+    if (last && last === normalized.id) return;
 
     // Update first to dedupe against quick successive events.
-    this.setLastBroadcastId(id);
+    this.setLastBroadcastId(normalized.id);
 
-    const msg = String(row?.message || '').trim();
-    if (!msg) return;
-    if (opts?.silent) return;
+    // Always keep a recent history (used by "replay last 3").
+    this.pushRecentBroadcast(normalized);
 
-    const kind = String(row?.kind || 'info').trim().toLowerCase();
-    const sender = String(row?.created_by_username || '').trim();
-    const senderSuffix = sender ? `: ${sender}` : '';
-    const title =
-      kind === 'danger'
-        ? `Alerta (Admin${senderSuffix})`
-        : kind === 'warning'
-          ? `Aviso (Admin${senderSuffix})`
-          : `Mensagem (Admin${senderSuffix})`;
-    this.speak(msg, 'simple', { title, autoCloseMs: 16000, avatar: 'admin-message' });
+    // Voicemail behavior: do not auto-popup; queue as unread.
+    if (!opts?.silent) {
+      this.pushUnreadBroadcast(normalized);
+    }
   }
 
   private async pollBroadcasts(opts?: { silentIfUninitialized?: boolean }): Promise<void> {
@@ -271,7 +338,7 @@ export class CompanionService {
 
       // Show any rows newer than lastId (oldest first).
       if (!lastId) {
-        this.showBroadcastRow(rows[0]);
+        this.enqueueBroadcastRow(rows[0]);
         return;
       }
 
@@ -283,7 +350,7 @@ export class CompanionService {
       if (!newer.length) return;
 
       newer.reverse();
-      for (const r of newer) this.showBroadcastRow(r);
+      for (const r of newer) this.enqueueBroadcastRow(r);
     } catch {
       // ignore
     }
@@ -305,7 +372,7 @@ export class CompanionService {
       .channel('broadcasts-live')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'broadcasts' }, (payload) => {
         const row = (payload as any)?.new;
-        this.showBroadcastRow(row);
+        this.enqueueBroadcastRow(row);
       })
       .subscribe((status) => {
         // If the subscription fails, polling still delivers messages.
@@ -313,6 +380,118 @@ export class CompanionService {
           // no-op (avoid spamming UI); polling continues
         }
       });
+  }
+
+  private clearBroadcastPlayback(): void {
+    if (this.broadcastPlaybackTimer == null) return;
+    try {
+      window.clearTimeout(this.broadcastPlaybackTimer);
+    } catch {
+      // ignore
+    }
+    this.broadcastPlaybackTimer = null;
+  }
+
+  private formatBroadcastTitle(b: BroadcastMsg): string {
+    const kind = String(b.kind || 'info').trim().toLowerCase();
+    const sender = String(b.created_by_username || '').trim();
+    const senderSuffix = sender ? `: ${sender}` : '';
+    return kind === 'danger'
+      ? `Alerta (Admin${senderSuffix})`
+      : kind === 'warning'
+        ? `Aviso (Admin${senderSuffix})`
+        : `Mensagem (Admin${senderSuffix})`;
+  }
+
+  private async markBroadcastSeen(id: string): Promise<void> {
+    const userId = this.auth.userId();
+    if (!userId) return;
+    if (!this.sb.ready()) return;
+
+    try {
+      await this.sb.supabase.from('broadcast_reads').upsert({
+        broadcast_id: id,
+        user_id: userId,
+        seen_at: new Date().toISOString(),
+      });
+    } catch {
+      // ignore (badge/queue still works even if server write fails)
+    }
+  }
+
+  private playBroadcast(b: BroadcastMsg, opts?: { autoCloseMs?: number }): void {
+    this.speak(b.message, 'simple', {
+      title: this.formatBroadcastTitle(b),
+      autoCloseMs: Math.max(0, Math.floor(Number(opts?.autoCloseMs) || 16_000)),
+      avatar: 'admin-message',
+    });
+  }
+
+  private playSequence(list: BroadcastMsg[]): void {
+    const seq = Array.isArray(list) ? list.filter(Boolean) : [];
+    if (!seq.length) return;
+
+    this.clearBroadcastPlayback();
+    this.open.set(true);
+
+    const playAt = (i: number) => {
+      if (this.hidden()) return;
+      if (!this.open()) return;
+      const b = seq[i];
+      if (!b) return;
+      this.playBroadcast(b, { autoCloseMs: 16_000 });
+      void this.markBroadcastSeen(b.id);
+
+      if (i + 1 < seq.length) {
+        this.broadcastPlaybackTimer = window.setTimeout(() => playAt(i + 1), 16_200);
+      }
+    };
+
+    playAt(0);
+  }
+
+  playUnreadBroadcasts(): void {
+    if (this.hidden()) return;
+
+    const unread = this.unreadBroadcasts();
+    if (!unread.length) {
+      this.toggleOpen();
+      return;
+    }
+
+    // Consume the unread queue (oldest first).
+    this.clearBroadcastPlayback();
+    this.open.set(true);
+
+    const playNext = () => {
+      if (this.hidden()) return;
+      if (!this.open()) return;
+
+      const cur = this.unreadBroadcasts();
+      if (!cur.length) return;
+
+      const nextMsg = cur[0];
+      const rest = cur.slice(1);
+      this.unreadBroadcasts.set(rest);
+      this.saveBroadcastList(LS_UNREAD_BROADCASTS, rest);
+
+      this.playBroadcast(nextMsg, { autoCloseMs: 16_000 });
+      void this.markBroadcastSeen(nextMsg.id);
+
+      if (rest.length) {
+        this.broadcastPlaybackTimer = window.setTimeout(() => playNext(), 16_200);
+      }
+    };
+
+    playNext();
+  }
+
+  playLast3Broadcasts(): void {
+    if (this.hidden()) return;
+    const recent = this.recentBroadcasts();
+    if (!recent.length) return;
+    const last3 = recent.slice(0, 3).reverse();
+    this.playSequence(last3);
   }
 
   /** Convenience for UI toggles: enabled=true means visible/usable. */
@@ -383,6 +562,12 @@ export class CompanionService {
     if (this.hidden()) return;
     this.open.update((v) => !v);
     if (this.open()) {
+      // If there are unread admin messages, clicking Noir plays them (voicemail).
+      if (this.unreadBroadcastCount() > 0) {
+        this.playUnreadBroadcasts();
+        return;
+      }
+
       // If the user opens it manually, show a friendly idle line.
       if (!this.text()) {
         this.title.set('Noir');
@@ -397,6 +582,7 @@ export class CompanionService {
       if (this.state() === 'idle' || this.state() === 'reading-idle') this.state.set('speaking');
     } else {
       this.clearAutoClose();
+      this.clearBroadcastPlayback();
       this.setIdle();
     }
   }

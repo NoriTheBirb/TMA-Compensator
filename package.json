@@ -1,0 +1,10 @@
+{
+  "name": "tma-compensator",
+  "private": true,
+  "scripts": {
+    "setup": "npm.cmd --prefix ng install",
+    "start": "npm.cmd --prefix ng start",
+    "build": "npm.cmd --prefix ng run build",
+    "test": "npm.cmd --prefix ng test"
+  }
+}

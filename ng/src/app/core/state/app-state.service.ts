@@ -14,6 +14,8 @@ import {
   secondsToHuman,
   secondsToTime,
 } from '../utils/time';
+import { isIsoInBrasiliaDay, localDayKey } from '../utils/day';
+import { saoPauloDayKey } from '../utils/tz';
 import { quotaWeightForItem } from '../utils/assistant';
 import { CloudSyncService } from '../services/cloud-sync.service';
 
@@ -38,7 +40,7 @@ const TIME_TRACKER_ITEMS = [
 
 @Injectable({ providedIn: 'root' })
 export class AppStateService {
-  // Time Tracker: if no activity is registered for 4 minutes, auto-start an "Ociosidade involuntaria" timer.
+  // Time Tracker: if no activity is registered for 6 minutes, auto-start an "Ociosidade involuntaria" timer.
   // It runs until the user records any other action/transaction.
   readonly timeTrackerModeEnabled = signal<boolean>(false);
   private inactivityTickerId: number | null = null;
@@ -52,6 +54,14 @@ export class AppStateService {
   ]);
   readonly balanceSeconds = signal<number>(0);
   readonly transactions = signal<LegacyTransaction[]>([]);
+  readonly activeDayKey = signal<string>(saoPauloDayKey(new Date()));
+
+  readonly transactionsToday = computed(() => {
+    const list = this.transactions() || [];
+    const dayKey = String(this.activeDayKey() || '').trim();
+    if (!dayKey) return list;
+    return list.filter((t) => this.isTxInDay(t, dayKey));
+  });
 
   readonly darkThemeEnabled = signal<boolean>(false);
   readonly showComplexa = signal<boolean>(false);
@@ -317,6 +327,37 @@ export class AppStateService {
     this.startClock();
   }
 
+  private isTxInDay(tx: LegacyTransaction, dayKey: string): boolean {
+    const dk = String((tx as any)?.dayKey || '').trim();
+    if (dk) return dk === dayKey;
+    const iso = String((tx as any)?.createdAtIso || '').trim();
+    if (iso) return isIsoInBrasiliaDay(iso, dayKey);
+    const ts = String((tx as any)?.timestamp || '').trim();
+    if (!ts) return false;
+    const d = new Date(ts);
+    if (!Number.isFinite(d.getTime())) return false;
+    return saoPauloDayKey(d) === dayKey;
+  }
+
+  private refreshActiveDayKeyIfNeeded(now: Date = new Date()): void {
+    const next = saoPauloDayKey(now);
+    const prev = String(this.activeDayKey() || '').trim();
+    if (!next) return;
+
+    // If last activity is from a previous day, reset it so TT idle doesn't trigger immediately.
+    const lastKey = saoPauloDayKey(new Date(this.lastRegisteredAtMs));
+    if (lastKey && lastKey !== next) {
+      this.lastRegisteredAtMs = Date.now();
+      this.storage.setLastRegisteredAtMs(this.lastRegisteredAtMs);
+    }
+
+    if (next === prev) return;
+
+    this.activeDayKey.set(next);
+    this.recomputeBalanceFromTransactions();
+    this.persist();
+  }
+
   private get cloud(): CloudSyncService | null {
     try {
       return this.injector.get(CloudSyncService);
@@ -330,10 +371,24 @@ export class AppStateService {
   }
 
   reloadFromStorage(): void {
-    this.balanceSeconds.set(this.storage.getBalanceSeconds());
+    // Always compute saldo from transactions of the active day.
+    this.activeDayKey.set(saoPauloDayKey(new Date()));
     const tx = this.storage.getTransactions();
     this.transactions.set(tx);
-    this.syncLastRegisteredFromTransactions(tx);
+    this.recomputeBalanceFromTransactions();
+
+    // Restore last activity timestamp (so involuntary idle survives page reloads)
+    // and then try to refine it using cloud timestamps if present.
+    const storedLast = this.storage.getLastRegisteredAtMsOrNull();
+    if (storedLast !== null) this.lastRegisteredAtMs = storedLast;
+    this.syncLastRegisteredFromTransactions(this.transactionsToday());
+    if (!Number.isFinite(this.lastRegisteredAtMs) || this.lastRegisteredAtMs <= 0) {
+      this.lastRegisteredAtMs = Date.now();
+    }
+
+    // If the persisted last activity belongs to a previous day, reset it.
+    this.refreshActiveDayKeyIfNeeded();
+    this.storage.setLastRegisteredAtMs(this.lastRegisteredAtMs);
 
     this.darkThemeEnabled.set(this.storage.getDarkThemeEnabled());
     this.showComplexa.set(this.storage.getShowComplexa());
@@ -412,11 +467,15 @@ export class AppStateService {
       const ms = Date.parse(iso);
       if (Number.isFinite(ms) && ms > best) best = ms;
     }
-    if (best > 0) this.lastRegisteredAtMs = best;
+    if (best > 0) {
+      this.lastRegisteredAtMs = best;
+      this.storage.setLastRegisteredAtMs(best);
+    }
   }
 
   private touchRegisteredNow(): void {
     this.lastRegisteredAtMs = Date.now();
+    this.storage.setLastRegisteredAtMs(this.lastRegisteredAtMs);
   }
 
   private ensureInvoluntaryIdleStopped(): void {
@@ -441,8 +500,8 @@ export class AppStateService {
     const msSince = Date.now() - Number(this.lastRegisteredAtMs || 0);
     if (!Number.isFinite(msSince) || msSince < 0) return;
 
-    const startAtMs = 4 * 60 * 1000;
-    const warnAtMs = 3.5 * 60 * 1000;
+    const startAtMs = 6 * 60 * 1000;
+    const warnAtMs = 5.5 * 60 * 1000;
 
     // Companion warning: 30s before auto-idle. Throttle to avoid spam.
     if (msSince >= warnAtMs && msSince < startAtMs) {
@@ -608,6 +667,11 @@ export class AppStateService {
   isFlowActionDisabled(key: string): boolean {
     if (!this.flowModeEnabled()) return false;
     const activeKey = this.activeFlowKey();
+
+    // Special-case: involuntary idle must never trap the user.
+    // Users must be able to start any other account or TT action to end it.
+    if (activeKey && activeKey === this.involuntaryIdleKey) return false;
+
     return Boolean(activeKey && key !== activeKey);
   }
 
@@ -761,7 +825,7 @@ export class AppStateService {
         type: type as any,
         tma,
         timeSpent: total,
-        timestamp: new Date().toLocaleString(),
+        timestamp: new Date().toISOString(),
         source: 'flow',
         assistant: null,
       });
@@ -925,6 +989,8 @@ export class AppStateService {
   }
 
   addTransaction(tx: Omit<LegacyTransaction, 'difference' | 'creditedMinutes'>): void {
+    this.refreshActiveDayKeyIfNeeded();
+
     // If the auto-idle timer is running and the user records something, end the idle state first.
     this.ensureInvoluntaryIdleStopped();
 
@@ -937,9 +1003,12 @@ export class AppStateService {
 
     const createdAtIso = String((tx as any)?.createdAtIso || '').trim() || new Date().toISOString();
 
+    const dayKey = saoPauloDayKey(createdAtIso);
+
     const nextTx: LegacyTransaction = {
       ...tx,
       createdAtIso,
+      dayKey: dayKey || undefined,
       difference,
       creditedMinutes,
     };
@@ -948,10 +1017,8 @@ export class AppStateService {
     const optimisticId = `local-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const optimistic: LegacyTransaction = { ...nextTx, id: optimisticId };
 
-    if (!isTimeTracker) {
-      this.balanceSeconds.set((Number(this.balanceSeconds()) || 0) + difference);
-    }
     this.transactions.set([optimistic, ...(this.transactions() || [])]);
+    this.recomputeBalanceFromTransactions();
 
     this.bumpCounter('txAdded');
     this.logEvent('tx_added', { item: nextTx.item, type: nextTx.type, tma: nextTx.tma, timeSpent: nextTx.timeSpent });
@@ -989,15 +1056,17 @@ export class AppStateService {
     const tx = list[index];
     const isTimeTracker = String((tx as any)?.type || '') === TIME_TRACKER_TYPE;
     const diff = isTimeTracker ? 0 : Number(tx?.difference) || 0;
+    const affectsToday = this.isTxInDay(tx as any, String(this.activeDayKey() || '').trim());
 
-    // Legacy behavior: removing a tx subtracts its difference from balance
-    if (!isTimeTracker) {
+    // Removing a tx only affects today's saldo if it belongs to the active day.
+    if (!isTimeTracker && affectsToday) {
       this.balanceSeconds.set((Number(this.balanceSeconds()) || 0) - diff);
     }
 
     const next = list.slice();
     next.splice(index, 1);
     this.transactions.set(next);
+    this.recomputeBalanceFromTransactions();
 
     this.bumpCounter('txDeleted');
     this.logEvent('tx_deleted', { index, item: (tx as any)?.item, type: (tx as any)?.type, tma: (tx as any)?.tma });
@@ -1046,7 +1115,7 @@ export class AppStateService {
   }
 
   private recomputeBalanceFromTransactions(): void {
-    const list = this.transactions() || [];
+    const list = this.transactionsToday() || [];
     let sum = 0;
     for (const t of list) {
       if (String((t as any)?.type || '') === TIME_TRACKER_TYPE) continue;
@@ -1100,6 +1169,7 @@ export class AppStateService {
     }
 
     const now = new Date();
+    this.refreshActiveDayKeyIfNeeded(now);
     const sec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
     this.nowSeconds.set(sec);
     this.applyBodyClasses();

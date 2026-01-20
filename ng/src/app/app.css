@@ -1,5 +1,7 @@
 
 .companion {
+	--companion-size: 270px;
+	--companion-gap: 14px;
 	position: fixed;
 	right: 18px;
 	bottom: 18px;
@@ -11,8 +13,9 @@
 }
 
 .companion-square {
-	width: 270px;
-	height: 270px;
+	width: var(--companion-size);
+	height: var(--companion-size);
+	position: relative;
 	border: none;
 	background: transparent;
 	box-shadow: none;
@@ -20,6 +23,26 @@
 	cursor: pointer;
 	padding: 0;
 	overflow: visible;
+}
+
+.companion-badge {
+	position: absolute;
+	top: 10px;
+	right: 14px;
+	min-width: 22px;
+	height: 22px;
+	padding: 0 6px;
+	border-radius: 999px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	font-weight: 980;
+	font-size: 12px;
+	letter-spacing: -0.2px;
+	color: white;
+	background: #e02424;
+	box-shadow: 0 10px 30px rgba(224,36,36,0.25);
+	border: 1px solid rgba(255,255,255,0.25);
 }
 
 .companion-square:hover {
@@ -39,8 +62,10 @@
 .companion-bubble {
 	position: absolute;
 	right: 0;
-	bottom: 284px;
+	bottom: calc(var(--companion-size) + var(--companion-gap));
 	width: min(380px, calc(100vw - 36px));
+	max-height: calc(100vh - (var(--companion-size) + var(--companion-gap) + 36px));
+	overflow: auto;
 	border-radius: 16px;
 	padding: 12px;
 	background: color-mix(in oklab, var(--card) 96%, var(--surface));
@@ -102,4 +127,26 @@
 	padding: 8px 10px;
 	font-weight: 950;
 	cursor: pointer;
+}
+
+@media (max-width: 520px), (max-height: 740px) {
+	.companion {
+		--companion-size: 210px;
+		--companion-gap: 12px;
+		right: 12px;
+		bottom: 12px;
+	}
+}
+
+@media (max-width: 380px), (max-height: 620px) {
+	.companion {
+		--companion-size: 170px;
+		--companion-gap: 10px;
+		right: 10px;
+		bottom: 10px;
+	}
+
+	.companion-bubble {
+		width: min(340px, calc(100vw - 20px));
+	}
 }

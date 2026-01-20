@@ -16,6 +16,7 @@ import {
   secondsToTime as formatSecondsToTime,
   timeToSeconds as parseTimeToSeconds,
 } from '../../core/utils/time';
+import { formatDateTimeSaoPaulo } from '../../core/utils/tz';
 
 @Component({
   selector: 'app-main-page',
@@ -355,7 +356,18 @@ export class MainPage {
   private flowChoiceHandler: ((choice: 'finalize' | 'paralyze' | 'cancel') => void) | null = null;
 
   protected readonly balanceText = computed(() => formatSignedTime(this.state.balanceSeconds()));
-  protected readonly transactions = computed(() => this.state.transactions());
+  protected readonly transactions = computed(() => this.state.transactionsToday());
+
+  protected readonly workedSecondsToday = computed(() => {
+    const list = this.transactions() || [];
+    let sum = 0;
+    for (const t of list) {
+      const type = String((t as any)?.type || '').trim();
+      if (type === this.timeTrackerType) continue;
+      sum += Math.max(0, Math.floor(Number((t as any)?.timeSpent) || 0));
+    }
+    return Math.floor(sum);
+  });
 
   private readonly involuntaryIdleItem = 'Ociosidade involuntaria';
   private readonly timeTrackerType = 'time_tracker';
@@ -370,6 +382,12 @@ export class MainPage {
       return !(item === this.involuntaryIdleItem && type === this.timeTrackerType);
     });
   });
+
+  protected whenText(t: LegacyTransaction): string {
+    const iso = String((t as any)?.createdAtIso || '').trim();
+    const ts = String((t as any)?.timestamp || '').trim();
+    return formatDateTimeSaoPaulo(iso || ts) || ts;
+  }
 
   protected readonly onboardingShiftStart = signal('');
   protected readonly onboardingLunchStart = signal('');
@@ -456,7 +474,7 @@ export class MainPage {
     const raw = this.timeInput().trim();
     const enteredSeconds = raw ? parseTimeToSeconds(raw) : pausedSeconds > 0 ? 0 : null;
     if (enteredSeconds === null) {
-      alert('Formato inválido. Use HH:MM, HH:MM:SS ou minutos (ex.: 12)');
+      alert('Formato inválido. Use MM:SS, HH:MM:SS ou minutos (ex.: 12).');
       return;
     }
 
@@ -467,7 +485,7 @@ export class MainPage {
       type: action.type,
       tma: action.tmaSeconds,
       timeSpent,
-      timestamp: new Date().toLocaleString(),
+      timestamp: new Date().toISOString(),
       source: 'modal',
       assistant: null,
     };
@@ -502,7 +520,7 @@ export class MainPage {
     const seconds = parsed !== null ? existingPaused + parsed : existingPaused;
 
     if (!Number.isFinite(seconds) || seconds < 0) {
-      alert('Tempo inválido para paralisar. Use HH:MM:SS ou minutos.');
+      alert('Tempo inválido para paralisar. Use MM:SS, HH:MM:SS ou minutos.');
       return;
     }
 

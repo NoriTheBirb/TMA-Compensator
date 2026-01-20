@@ -11,6 +11,8 @@ import { SupabaseService } from '../../core/services/supabase.service';
 import { quotaWeightForItem } from '../../core/utils/assistant';
 import { drawWorkHoursByHourStacked } from '../../core/utils/report';
 import { formatSignedTime, secondsToTime } from '../../core/utils/time';
+import { localDayKey } from '../../core/utils/day';
+import { saoPauloDayRangeIsoFromYmd, saoPauloDayKey } from '../../core/utils/tz';
 
 type ProfileLite = {
   user_id: string;
@@ -25,6 +27,25 @@ type TxLite = {
   tma: number;
   time_spent: number;
   created_at: string;
+};
+
+type BroadcastLite = {
+  id: string;
+  message: string;
+  kind: string;
+  created_at: string;
+  created_by_username: string | null;
+};
+
+type BroadcastReadRow = {
+  user_id: string;
+  seen_at: string;
+};
+
+type BroadcastReadLite = {
+  user_id: string;
+  username: string;
+  seen_at: string;
 };
 
 type UserDayRow = {
@@ -42,6 +63,26 @@ function dayRangeIso(now: Date): { startIso: string; endIso: string } {
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
   return { startIso: start.toISOString(), endIso: end.toISOString() };
+}
+
+function formatAnyError(e: unknown, fallback: string): string {
+  try {
+    if (e instanceof Error) {
+      const msg = String(e.message || '').trim();
+      return msg || fallback;
+    }
+    if (typeof e === 'string') {
+      const msg = e.trim();
+      return msg || fallback;
+    }
+    const obj = e as any;
+    const msg = String(obj?.message || obj?.error_description || obj?.error || '').trim();
+    if (msg) return msg;
+    const json = JSON.stringify(e);
+    return json && json !== '{}' ? json : fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 @Component({
@@ -66,6 +107,13 @@ export class AdminPage {
   protected readonly sortKey = signal<'units' | 'accounts' | 'saldo' | 'last'>('units');
   protected readonly sortDir = signal<'asc' | 'desc'>('desc');
   protected readonly showAdmins = signal(true);
+
+  protected readonly selectedDayYmd = signal<string>(saoPauloDayKey(new Date()));
+  protected readonly selectedDayLabel = computed(() => {
+    const ymd = String(this.selectedDayYmd() || '').trim();
+    const today = saoPauloDayKey(new Date());
+    return ymd && ymd === today ? 'Hoje' : ymd || '—';
+  });
   protected readonly liveEnabled = signal(true);
 
   protected readonly detailsOpen = signal(false);
@@ -75,6 +123,16 @@ export class AdminPage {
   protected readonly broadcastText = signal('');
   protected readonly broadcastSending = signal(false);
   protected readonly broadcastError = signal('');
+
+  protected readonly broadcastHistoryOpen = signal(false);
+  protected readonly broadcastHistoryLoading = signal(false);
+  protected readonly broadcastHistoryError = signal('');
+  protected readonly selectedBroadcastId = signal<string | null>(null);
+  protected readonly broadcastReadsLoading = signal(false);
+
+  private readonly broadcastHistory = signal<BroadcastLite[]>([]);
+  private readonly broadcastReadCounts = signal<Record<string, number>>({});
+  private readonly broadcastReads = signal<BroadcastReadLite[]>([]);
 
   private readonly profiles = signal<ProfileLite[]>([]);
   private readonly transactionsToday = signal<TxLite[]>([]);
@@ -195,6 +253,27 @@ export class AdminPage {
     const id = this.selectedUserId();
     if (!id) return [];
     return this.transactionsToday().filter((t) => t.user_id === id);
+  });
+
+  protected readonly selectedBroadcast = computed<BroadcastLite | null>(() => {
+    const id = this.selectedBroadcastId();
+    if (!id) return null;
+    return this.broadcastHistory().find((b) => b.id === id) ?? null;
+  });
+
+  protected readonly selectedBroadcastReads = computed<BroadcastReadLite[]>(() => this.broadcastReads());
+
+  protected readonly broadcastHistoryRows = computed(() => {
+    const totalUsers = this.profiles().length;
+    const counts = this.broadcastReadCounts();
+    return this.broadcastHistory().map((b) => {
+      const seenCount = Math.max(0, Math.floor(Number(counts[b.id]) || 0));
+      return {
+        ...b,
+        seenCount,
+        totalUsers,
+      };
+    });
   });
 
   protected readonly selectedTopItems = computed(() => {
@@ -481,6 +560,126 @@ export class AdminPage {
     }
   }
 
+  protected openBroadcastHistory(): void {
+    this.broadcastHistoryError.set('');
+    if (this.sidebarShown()) this.closeSidebar();
+    this.broadcastHistoryOpen.set(true);
+    void this.refreshBroadcastHistory();
+  }
+
+  protected closeBroadcastHistory(): void {
+    this.broadcastHistoryOpen.set(false);
+    this.selectedBroadcastId.set(null);
+    this.broadcastReads.set([]);
+    this.broadcastHistoryError.set('');
+  }
+
+  protected selectBroadcast(b: BroadcastLite): void {
+    const id = String(b?.id || '').trim();
+    if (!id) return;
+    this.selectedBroadcastId.set(id);
+    void this.loadBroadcastReads(id);
+  }
+
+  protected async refreshBroadcastHistory(): Promise<void> {
+    if (!this.sb.ready()) {
+      this.broadcastHistoryError.set('Supabase não configurado.');
+      return;
+    }
+
+    this.broadcastHistoryLoading.set(true);
+    this.broadcastHistoryError.set('');
+
+    try {
+      const { data, error } = await this.sb.supabase
+        .from('broadcasts')
+        .select('id,message,kind,created_at,created_by_username')
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (error) throw error;
+
+      const rows = (Array.isArray(data) ? data : []) as any[];
+      const broadcasts: BroadcastLite[] = rows
+        .map((r) => ({
+          id: String(r?.id || '').trim(),
+          message: String(r?.message || '').trim(),
+          kind: String(r?.kind || 'info').trim().toLowerCase(),
+          created_at: String(r?.created_at || '').trim(),
+          created_by_username: r?.created_by_username ? String(r.created_by_username).trim() : null,
+        }))
+        .filter((b) => Boolean(b.id) && Boolean(b.message));
+
+      this.broadcastHistory.set(broadcasts);
+
+      // Read counts (JS aggregate).
+      const ids = broadcasts.map((b) => b.id).filter(Boolean);
+      if (!ids.length) {
+        this.broadcastReadCounts.set({});
+        return;
+      }
+
+      const { data: reads, error: readsError } = await this.sb.supabase
+        .from('broadcast_reads')
+        .select('broadcast_id,user_id')
+        .in('broadcast_id', ids);
+      if (readsError) throw readsError;
+
+      const counts: Record<string, number> = {};
+      const rr = Array.isArray(reads) ? (reads as any[]) : [];
+      for (const r of rr) {
+        const bid = String(r?.broadcast_id || '').trim();
+        if (!bid) continue;
+        counts[bid] = (counts[bid] ?? 0) + 1;
+      }
+      this.broadcastReadCounts.set(counts);
+
+      if (!this.selectedBroadcastId() && broadcasts.length) {
+        this.selectBroadcast(broadcasts[0]);
+      }
+    } catch (e) {
+      this.broadcastHistoryError.set(formatAnyError(e, 'Falha ao carregar histórico.'));
+    } finally {
+      this.broadcastHistoryLoading.set(false);
+    }
+  }
+
+  private async loadBroadcastReads(broadcastId: string): Promise<void> {
+    if (!this.sb.ready()) return;
+
+    const id = String(broadcastId || '').trim();
+    if (!id) return;
+
+    this.broadcastReadsLoading.set(true);
+    this.broadcastHistoryError.set('');
+
+    try {
+      const { data, error } = await this.sb.supabase
+        .from('broadcast_reads')
+        .select('user_id,seen_at')
+        .eq('broadcast_id', id)
+        .order('seen_at', { ascending: false });
+      if (error) throw error;
+
+      const profileById = new Map(this.profiles().map((p) => [p.user_id, p] as const));
+      const rows = (Array.isArray(data) ? data : []) as BroadcastReadRow[];
+      const mapped: BroadcastReadLite[] = rows.map((r) => {
+        const uid = String(r?.user_id || '').trim();
+        const uname = profileById.get(uid)?.username;
+        return {
+          user_id: uid,
+          username: String(uname || '').trim() || uid,
+          seen_at: String(r?.seen_at || '').trim(),
+        };
+      });
+
+      this.broadcastReads.set(mapped);
+    } catch (e) {
+      this.broadcastHistoryError.set(formatAnyError(e, 'Falha ao carregar leituras.'));
+    } finally {
+      this.broadcastReadsLoading.set(false);
+    }
+  }
+
   protected companionHelp(): void {
     this.companion.speak(
       'Modo admin: eu posso te ajudar a interpretar o painel (ritmo, TT, idle).\n\nSe quiser, dá pra adicionar também um botão de “mensagem para todos” e eu aviso todo mundo pelo balão.',
@@ -665,7 +864,8 @@ export class AdminPage {
     this.errorText.set('');
 
     try {
-      const { startIso, endIso } = dayRangeIso(new Date());
+      const ymd = String(this.selectedDayYmd() || '').trim() || saoPauloDayKey(new Date());
+      const { startIso, endIso } = saoPauloDayRangeIsoFromYmd(ymd);
 
       // Profiles (admin can see all)
       const { data: prof, error: profErr } = await this.sb.supabase
@@ -697,6 +897,17 @@ export class AdminPage {
       // If config changed mid-session, keep realtime in the right state.
       this.ensureRealtime();
     }
+  }
+
+  protected setSelectedDay(ymd: string): void {
+    const next = String(ymd || '').trim();
+    this.selectedDayYmd.set(next);
+    void this.refresh();
+  }
+
+  protected setSelectedDayToday(): void {
+    this.selectedDayYmd.set(localDayKey(new Date()));
+    void this.refresh();
   }
 
   ngAfterViewChecked(): void {

@@ -1,6 +1,9 @@
 -- TMA Compensator - Supabase Database Setup
 -- Run this SQL in your Supabase SQL Editor
 
+-- UUID + hashing
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
 -- =====================================================
 -- PROFILES TABLE
 -- =====================================================
@@ -119,6 +122,40 @@ CREATE POLICY "Users can delete their own transactions"
   USING (auth.uid() = user_id);
 
 -- =====================================================
+-- TIME TRACKER CODES (hashed, server-side)
+-- =====================================================
+CREATE TABLE IF NOT EXISTS public.time_tracker_codes (
+  code_hash TEXT PRIMARY KEY,
+  active BOOLEAN NOT NULL DEFAULT true,
+  notes TEXT,
+  assigned_user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.time_tracker_codes ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Admins can read all time tracker codes" ON public.time_tracker_codes;
+CREATE POLICY "Admins can read all time tracker codes"
+  ON public.time_tracker_codes FOR SELECT
+  USING (public.is_admin());
+
+DROP POLICY IF EXISTS "Admins can insert time tracker codes" ON public.time_tracker_codes;
+CREATE POLICY "Admins can insert time tracker codes"
+  ON public.time_tracker_codes FOR INSERT
+  WITH CHECK (public.is_admin());
+
+DROP POLICY IF EXISTS "Admins can update time tracker codes" ON public.time_tracker_codes;
+CREATE POLICY "Admins can update time tracker codes"
+  ON public.time_tracker_codes FOR UPDATE
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
+
+DROP POLICY IF EXISTS "Admins can delete time tracker codes" ON public.time_tracker_codes;
+CREATE POLICY "Admins can delete time tracker codes"
+  ON public.time_tracker_codes FOR DELETE
+  USING (public.is_admin());
+
+-- =====================================================
 -- SETTINGS TABLE
 -- =====================================================
 CREATE TABLE IF NOT EXISTS public.settings (
@@ -181,11 +218,24 @@ CREATE TABLE IF NOT EXISTS public.broadcasts (
   CONSTRAINT broadcasts_created_by_fkey FOREIGN KEY (created_by) REFERENCES auth.users(id)
 );
 
+-- =====================================================
+-- BROADCAST READ RECEIPTS TABLE
+-- =====================================================
+CREATE TABLE IF NOT EXISTS public.broadcast_reads (
+  broadcast_id UUID NOT NULL,
+  user_id UUID NOT NULL,
+  seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT broadcast_reads_pkey PRIMARY KEY (broadcast_id, user_id),
+  CONSTRAINT broadcast_reads_broadcast_id_fkey FOREIGN KEY (broadcast_id) REFERENCES public.broadcasts(id) ON DELETE CASCADE,
+  CONSTRAINT broadcast_reads_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE
+);
+
 -- Index for faster queries
 CREATE INDEX IF NOT EXISTS idx_broadcasts_created_at ON public.broadcasts(created_at DESC);
 
 -- Enable RLS
 ALTER TABLE public.broadcasts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.broadcast_reads ENABLE ROW LEVEL SECURITY;
 
 -- Policies for broadcasts table
 DROP POLICY IF EXISTS "All authenticated users can read broadcasts" ON public.broadcasts;
@@ -197,6 +247,22 @@ DROP POLICY IF EXISTS "Admins can insert broadcasts" ON public.broadcasts;
 CREATE POLICY "Admins can insert broadcasts"
   ON public.broadcasts FOR INSERT
   WITH CHECK (public.is_admin());
+
+-- Policies for broadcast_reads table
+DROP POLICY IF EXISTS "Users can read their own broadcast reads" ON public.broadcast_reads;
+CREATE POLICY "Users can read their own broadcast reads"
+  ON public.broadcast_reads FOR SELECT
+  USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Admins can read all broadcast reads" ON public.broadcast_reads;
+CREATE POLICY "Admins can read all broadcast reads"
+  ON public.broadcast_reads FOR SELECT
+  USING (public.is_admin());
+
+DROP POLICY IF EXISTS "Users can insert their own broadcast reads" ON public.broadcast_reads;
+CREATE POLICY "Users can insert their own broadcast reads"
+  ON public.broadcast_reads FOR INSERT
+  WITH CHECK (auth.uid() IS NOT NULL AND auth.uid() = user_id);
 
 -- =====================================================
 -- TRIGGER: Auto-create profile on signup
@@ -231,31 +297,83 @@ CREATE TRIGGER on_auth_user_created
 -- RPC: Enable time tracker
 -- =====================================================
 CREATE OR REPLACE FUNCTION public.enable_time_tracker(input_code TEXT)
-RETURNS BOOLEAN AS $$
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions
+AS $$
 DECLARE
-  expected_code TEXT := 'TT2024';
-  current_user_id UUID;
+  h TEXT;
+  ok BOOLEAN;
 BEGIN
-  current_user_id := auth.uid();
-  
-  IF current_user_id IS NULL THEN
-    RAISE EXCEPTION 'Not authenticated';
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'not_authenticated';
   END IF;
-  
-  IF input_code != expected_code THEN
+
+  h := encode(
+    digest(
+      convert_to(lower(trim(coalesce(input_code, ''))), 'utf8'),
+      'sha256'::text
+    ),
+    'hex'
+  );
+
+  IF coalesce(length(h), 0) = 0 THEN
     RETURN false;
   END IF;
-  
+
+  SELECT exists (
+    SELECT 1
+    FROM public.time_tracker_codes c
+    WHERE c.code_hash = h
+      AND c.active = true
+      AND (c.assigned_user_id IS NULL OR c.assigned_user_id = auth.uid())
+  )
+  INTO ok;
+
+  IF NOT ok THEN
+    RETURN false;
+  END IF;
+
   UPDATE public.profiles
-  SET 
+  SET
     time_tracker_enabled = true,
     time_tracker_enabled_at = NOW(),
     updated_at = NOW()
-  WHERE user_id = current_user_id;
-  
+  WHERE user_id = auth.uid();
+
   RETURN true;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
+
+-- Disable Time Tracker
+CREATE OR REPLACE FUNCTION public.disable_time_tracker()
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions
+AS $$
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'not_authenticated';
+  END IF;
+
+  UPDATE public.profiles
+  SET
+    time_tracker_enabled = false,
+    updated_at = NOW()
+  WHERE user_id = auth.uid();
+END;
+$$;
+
+-- Seed default code: TT2024 (case-insensitive)
+INSERT INTO public.time_tracker_codes (code_hash, active, notes)
+VALUES (
+  encode(digest(convert_to(lower(trim('TT2024')), 'utf8'), 'sha256'::text), 'hex'),
+  true,
+  'default TT code'
+)
+ON CONFLICT (code_hash) DO NOTHING;
 
 -- =====================================================
 -- Grant necessary permissions

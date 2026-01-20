@@ -281,11 +281,11 @@
   inset: 0;
   background: rgba(0,0,0,0.55);
   backdrop-filter: blur(6px);
-  display:flex;
-  align-items:center;
-  justify-content:center;
+	display: grid;
+	place-items: center;
+  overflow: auto;
   padding: 16px;
-  z-index: 9999;
+  z-index: 20000;
 }
 
 .admin-modal {
@@ -296,6 +296,18 @@
   background: var(--card);
   box-shadow: 0 28px 90px rgba(0,0,0,0.35);
   padding: 14px;
+  margin: auto;
+}
+
+.admin-modal--history {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.admin-modal--history .admin-modal-scroll {
+  overflow: auto;
+  padding-right: 2px;
 }
 
 .admin-modal--small {
@@ -330,6 +342,104 @@
   margin-top: 12px;
   padding-top: 10px;
   border-top: 1px solid color-mix(in oklab, var(--border, rgba(255,255,255,0.15)) 35%, transparent);
+}
+
+.broadcast-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+  gap: 12px;
+}
+
+@media (max-width: 900px) {
+  .broadcast-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.broadcast-list,
+.broadcast-detail {
+  background: color-mix(in oklab, var(--card) 92%, var(--surface));
+  border-radius: 16px;
+  border: 1px solid color-mix(in oklab, var(--border, rgba(255,255,255,0.15)) 35%, transparent);
+  padding: 10px;
+}
+
+.broadcast-row {
+  width: 100%;
+  display: block;
+  text-align: left;
+  border: 1px solid color-mix(in oklab, var(--border, rgba(255,255,255,0.15)) 35%, transparent);
+  background: color-mix(in oklab, var(--surface) 55%, transparent);
+  color: inherit;
+  border-radius: 14px;
+  padding: 10px;
+  cursor: pointer;
+  margin-bottom: 10px;
+}
+
+.broadcast-row.is-selected {
+  border-color: color-mix(in oklab, var(--accent) 55%, var(--border, rgba(255,255,255,0.15)));
+  box-shadow: 0 18px 50px rgba(0,0,0,0.25);
+}
+
+.broadcast-row-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.broadcast-row-title {
+  font-weight: 980;
+}
+
+.broadcast-row-msg {
+  color: var(--muted);
+  font-weight: 850;
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.broadcast-row-foot {
+  margin-top: 8px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.broadcast-detail-title {
+  font-weight: 980;
+  margin-bottom: 8px;
+}
+
+.broadcast-reads {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.broadcast-read {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in oklab, var(--border, rgba(255,255,255,0.15)) 35%, transparent);
+  background: color-mix(in oklab, var(--surface) 55%, transparent);
+}
+
+.broadcast-read-name {
+  font-weight: 950;
+}
+
+.broadcast-empty {
+  padding: 10px;
+  color: var(--muted);
+  font-weight: 850;
 }
 
 .admin-modal-head {

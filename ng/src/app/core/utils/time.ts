@@ -65,10 +65,10 @@ export function formatSignedTime(totalSeconds: number): string {
   return `${sign}${secondsToTime(sec)}`;
 }
 
-// Legacy-compatible parser:
+// Duration parser (legacy-friendly):
 // - "12" => 12 minutes
-// - "HH:MM"
-// - "HH:MM:SS"
+// - "MM:SS" (two parts)
+// - "HH:MM:SS" (three parts)
 export function timeToSeconds(rawInput: string): number | null {
   const raw = String(rawInput || '').trim();
   if (!raw) return null;
@@ -82,14 +82,16 @@ export function timeToSeconds(rawInput: string): number | null {
   const parts = raw.split(':').map(p => p.trim());
   if (parts.length !== 2 && parts.length !== 3) return null;
 
-  const [hStr, mStr, sStr] = parts;
-  const hours = Number(hStr);
-  const minutes = Number(mStr);
-  const seconds = parts.length === 3 ? Number(sStr) : 0;
+  // Two parts are treated as MM:SS (duration).
+  // For hours, require three-part format HH:MM:SS.
+  const [aStr, bStr, cStr] = parts;
+  const hours = parts.length === 3 ? Number(aStr) : 0;
+  const minutes = parts.length === 3 ? Number(bStr) : Number(aStr);
+  const seconds = parts.length === 3 ? Number(cStr) : Number(bStr);
 
   if (![hours, minutes, seconds].every(n => Number.isFinite(n))) return null;
   if (hours < 0 || minutes < 0 || seconds < 0) return null;
-  if (minutes > 59) return null;
+  if (minutes > 59 && parts.length === 3) return null;
   if (seconds > 59) return null;
 
   return Math.floor(hours * 3600 + minutes * 60 + seconds);

@@ -6,6 +6,7 @@ import { AppStateService } from '../state/app-state.service';
 import { AuthService } from './auth.service';
 import { CompanionService } from './companion.service';
 import { SupabaseService } from './supabase.service';
+import { saoPauloDayKey } from '../utils/tz';
 
 type DbTransactionRow = {
   id: string;
@@ -393,14 +394,20 @@ export class CloudSyncService {
   private mapRowToTx(row: Partial<DbTransactionRow>): LegacyTransaction {
     const tma = Math.max(0, Math.floor(Number((row as any)?.tma) || 0));
     const timeSpent = Math.max(0, Math.floor(Number((row as any)?.time_spent) || 0));
-    const difference = timeSpent - tma;
-    const creditedMinutes = Math.round(Math.abs(difference) / 60);
+    const type = String((row as any)?.type || '');
+    const isTimeTracker = type === 'time_tracker';
+    const rawDifference = timeSpent - tma;
+    const difference = isTimeTracker ? 0 : rawDifference;
+    const creditedMinutes = isTimeTracker ? 0 : Math.round(Math.abs(rawDifference) / 60);
+    const createdAtIso = String((row as any)?.created_at || '');
+    const dayKey = createdAtIso ? saoPauloDayKey(createdAtIso) : '';
 
     return {
       id: String((row as any)?.id || ''),
-      createdAtIso: String((row as any)?.created_at || ''),
+      createdAtIso,
+      dayKey: dayKey || undefined,
       item: String((row as any)?.item || ''),
-      type: String((row as any)?.type || ''),
+      type,
       tma,
       timeSpent,
       difference,

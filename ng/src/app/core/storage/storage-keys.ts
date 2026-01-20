@@ -1,6 +1,7 @@
 export const STORAGE_KEYS = {
   balance: 'tma_comp_balance_v1',
   transactions: 'tma_comp_transactions_v1',
+  lastRegisteredAtMs: 'tma_comp_last_registered_at_ms_v1',
   lunch: 'tma_comp_lunch_v1',
   lunchStyle: 'tma_comp_lunch_style_v1',
   shiftStart: 'tma_comp_shift_start_v1',

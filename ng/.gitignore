@@ -29,6 +29,13 @@ yarn-error.log
 !.vscode/mcp.json
 .history/*
 
+# AI/editor metadata
+.claude/
+.cursor/
+.gemini/
+.junie/
+.windsurf/
+
 # Miscellaneous
 /.angular/cache
 .sass-cache/

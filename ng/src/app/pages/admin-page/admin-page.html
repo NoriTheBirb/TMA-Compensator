@@ -22,12 +22,24 @@
       <button class="sidebar-action" type="button" (click)="toggleLive()">
         {{ liveEnabled() ? 'Ao vivo: ON' : 'Ao vivo: OFF' }}
       </button>
+      <button class="sidebar-action" type="button" (click)="openBroadcastHistory()">Histórico</button>
       <button class="sidebar-action" type="button" (click)="refresh()" [disabled]="loading()">Atualizar</button>
     </div>
   </header>
 
   <div class="admin-hint">
-    <span class="admin-pill">Hoje</span>
+    <span class="admin-pill">{{ selectedDayLabel() }}</span>
+    <label class="admin-field" style="margin-left:12px; display:inline-flex; align-items:center; gap:8px;">
+      <span class="admin-field-label" style="margin:0;">Dia</span>
+      <input
+        class="admin-input"
+        type="date"
+        [ngModel]="selectedDayYmd()"
+        (ngModelChange)="setSelectedDay($event)"
+        style="width:auto; min-width:160px;"
+      />
+      <button class="admin-sort-btn" type="button" (click)="setSelectedDayToday()">Hoje</button>
+    </label>
     <span class="admin-muted" style="margin-left:10px;">Atualizado: {{ asOfIso() | date:'HH:mm:ss' }}</span>
   </div>
 
@@ -142,6 +154,7 @@
       <div class="sidebar-section-title">Ações</div>
       <button class="sidebar-action" type="button" (click)="refresh()" [disabled]="loading()">Atualizar</button>
       <button class="sidebar-action" type="button" (click)="toggleLive()">{{ liveEnabled() ? 'Ao vivo: ON' : 'Ao vivo: OFF' }}</button>
+      <button class="sidebar-action" type="button" (click)="openBroadcastHistory()">Histórico</button>
       <button class="sidebar-action" type="button" (click)="openBroadcast()">Mensagem p/ todos</button>
       <button class="sidebar-action sidebar-action--danger" type="button" (click)="logout()">Sair</button>
     </div>
@@ -165,12 +178,87 @@
       <button class="sidebar-action" type="button" (click)="companion.showHelp()" [disabled]="companion.hidden()">O que eu faço?</button>
       <button class="sidebar-action" type="button" (click)="companion.showTip()" [disabled]="companion.hidden()">Dica rápida</button>
       <button class="sidebar-action" type="button" (click)="companion.showMotivation()" [disabled]="companion.hidden()">Motivação</button>
-      <button class="sidebar-action" type="button" (click)="companion.showShortcuts()" [disabled]="companion.hidden()">Atalhos</button>
       <button class="sidebar-action" type="button" (click)="companion.showTimeTrackerInfo()" [disabled]="companion.hidden()">Time Tracker</button>
 
     </div>
   </div>
 </aside>
+
+<div class="admin-modal-overlay" *ngIf="broadcastHistoryOpen()" (click)="closeBroadcastHistory()">
+  <div class="admin-modal admin-modal--history" (click)="$event.stopPropagation()">
+    <header class="admin-modal-head">
+      <div>
+        <div class="admin-modal-title">Histórico de mensagens (Admin)</div>
+        <div class="admin-modal-sub">
+          <span class="admin-muted">Clique em uma mensagem para ver quem já ouviu/viu.</span>
+        </div>
+      </div>
+      <button class="admin-modal-close" type="button" (click)="closeBroadcastHistory()">✕</button>
+    </header>
+
+    <div class="admin-modal-scroll">
+      <div class="admin-actions" style="justify-content:flex-end; margin-bottom: 10px;">
+        <button class="sidebar-action" type="button" (click)="refreshBroadcastHistory()" [disabled]="broadcastHistoryLoading()">
+          {{ broadcastHistoryLoading() ? 'Carregando…' : 'Atualizar' }}
+        </button>
+      </div>
+
+      <div class="admin-error" *ngIf="broadcastHistoryError()">{{ broadcastHistoryError() }}</div>
+
+      <div class="broadcast-grid">
+        <div class="broadcast-list">
+          <div class="broadcast-empty" *ngIf="!broadcastHistoryLoading() && broadcastHistoryRows().length === 0">
+            Nenhuma mensagem.
+          </div>
+
+          <button
+            class="broadcast-row"
+            type="button"
+            *ngFor="let b of broadcastHistoryRows()"
+            [class.is-selected]="selectedBroadcastId() === b.id"
+            (click)="selectBroadcast(b)"
+          >
+            <div class="broadcast-row-top">
+              <div class="broadcast-row-title">
+                {{ b.kind === 'danger' ? 'Alerta' : (b.kind === 'warning' ? 'Aviso' : 'Mensagem') }}
+                <span class="admin-muted" *ngIf="b.created_by_username"> • {{ b.created_by_username }}</span>
+              </div>
+              <div class="admin-muted">{{ b.created_at | date:'dd/MM HH:mm' }}</div>
+            </div>
+            <div class="broadcast-row-msg">{{ b.message }}</div>
+            <div class="broadcast-row-foot">
+              <span class="admin-pill">Visto: {{ b.seenCount }}/{{ b.totalUsers }}</span>
+            </div>
+          </button>
+        </div>
+
+        <div class="broadcast-detail">
+          <div class="broadcast-empty" *ngIf="!selectedBroadcast()">
+            Selecione uma mensagem.
+          </div>
+
+          <ng-container *ngIf="selectedBroadcast()">
+            <div class="broadcast-detail-title">Quem já viu/ouviu</div>
+            <div class="admin-muted" style="margin-bottom: 10px;">
+              {{ selectedBroadcastReads().length }} leituras
+              <span *ngIf="selectedBroadcast()?.created_at"> • {{ selectedBroadcast()?.created_at | date:'dd/MM/yyyy HH:mm:ss' }}</span>
+            </div>
+
+            <div class="broadcast-empty" *ngIf="broadcastReadsLoading()">Carregando…</div>
+            <div class="broadcast-empty" *ngIf="!broadcastReadsLoading() && selectedBroadcastReads().length === 0">Ninguém ainda.</div>
+
+            <div class="broadcast-reads" *ngIf="!broadcastReadsLoading() && selectedBroadcastReads().length">
+              <div class="broadcast-read" *ngFor="let r of selectedBroadcastReads()">
+                <div class="broadcast-read-name">{{ r.username }}</div>
+                <div class="admin-muted">{{ r.seen_at | date:'dd/MM HH:mm:ss' }}</div>
+              </div>
+            </div>
+          </ng-container>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <div class="admin-modal-overlay" *ngIf="broadcastOpen()" (click)="closeBroadcast()">
   <div class="admin-modal admin-modal--small admin-modal--composer" (click)="$event.stopPropagation()">
@@ -178,7 +266,7 @@
       <div>
         <div class="admin-modal-title">Mensagem para todos</div>
         <div class="admin-modal-sub">
-            <span class="admin-muted">Envia um aviso global que aparece no Noir de todos os usuários online.</span>
+            <span class="admin-muted">Envia um aviso global que vira “correio de voz” no Noir (badge vermelho + reprodução ao clicar).</span>
         </div>
       </div>
       <button class="admin-modal-close" type="button" (click)="closeBroadcast()">✕</button>

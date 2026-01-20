@@ -44,6 +44,21 @@ export class StorageService {
     this.ls?.setItem(STORAGE_KEYS.transactions, JSON.stringify(Array.isArray(value) ? value : []));
   }
 
+  getLastRegisteredAtMsOrNull(): number | null {
+    const raw = this.ls?.getItem(STORAGE_KEYS.lastRegisteredAtMs);
+    if (raw === null || raw === undefined) return null;
+    if (String(raw).trim() === '') return null;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed <= 0) return null;
+    return Math.floor(parsed);
+  }
+
+  setLastRegisteredAtMs(value: number): void {
+    const ms = Math.floor(Number(value) || 0);
+    if (!Number.isFinite(ms) || ms <= 0) return;
+    this.ls?.setItem(STORAGE_KEYS.lastRegisteredAtMs, String(ms));
+  }
+
   getDarkThemeEnabled(): boolean {
     return this.ls?.getItem(STORAGE_KEYS.darkTheme) === '1';
   }

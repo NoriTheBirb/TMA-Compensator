@@ -1939,9 +1939,11 @@ function handleFlowTimer(btn, item, type, tma, opts = null) {
 }
     // Add transaction from flow mode
 function addFlowTransaction(item, type, tma, timeSpent) {
-    const difference = timeSpent - tma;
-    timeBalance += difference;
-    const creditedMinutes = Math.round(Math.abs(difference) / 60);
+    const isTimeTracker = String(type || '') === 'time_tracker';
+    const rawDifference = timeSpent - tma;
+    const difference = isTimeTracker ? 0 : rawDifference;
+    if (!isTimeTracker) timeBalance += difference;
+    const creditedMinutes = isTimeTracker ? 0 : Math.round(Math.abs(rawDifference) / 60);
     ensureAnalytics();
     const lastReco = analytics.assistant?.lastReco || null;
     const tx = {
@@ -1951,7 +1953,7 @@ function addFlowTransaction(item, type, tma, timeSpent) {
         timeSpent: timeSpent,
         difference: difference,
         creditedMinutes: creditedMinutes,
-        timestamp: new Date().toLocaleString(),
+        timestamp: new Date().toISOString(),
         source: 'flow',
         assistant: lastReco ? {
             lastRecoKey: lastReco.key,
@@ -2116,7 +2118,7 @@ function addTransaction() {
     const raw = String(timeInput?.value || '').trim();
     const entered = raw ? timeToSeconds(raw) : (pausedSeconds > 0 ? 0 : null);
     if (entered === null) {
-        alert('Formato inválido. Use HH:MM, HH:MM:SS ou minutos (ex.: 12)');
+        alert('Formato inválido. Use MM:SS, HH:MM:SS ou minutos (ex.: 12)');
         return;
     }
 
@@ -2125,13 +2127,15 @@ function addTransaction() {
     // Calcula diferença entre tempo gasto e TMA
     // positivo -> user foi mais lento que TMA (Saldo positivo)
     // negativo -> user foi mais rápido que TMA (Saldo negativo)
-    const difference = timeSpent - currentTMA;
+    const isTimeTracker = String(currentType || '') === 'time_tracker';
+    const rawDifference = timeSpent - currentTMA;
+    const difference = isTimeTracker ? 0 : rawDifference;
 
-    // Aplica a diferença ao saldo. Positivo -> saldo aumenta, Negativo -> saldo diminui
-    timeBalance += difference;
+    // Aplica a diferença ao saldo só para contas (não para Time Tracker)
+    if (!isTimeTracker) timeBalance += difference;
 
     // Calcula minutos creditados (valor absoluto arredondado)
-    const creditedMinutes = Math.round(Math.abs(difference) / 60);
+    const creditedMinutes = isTimeTracker ? 0 : Math.round(Math.abs(rawDifference) / 60);
 
     ensureAnalytics();
     const lastReco = analytics.assistant?.lastReco || null;
@@ -2143,7 +2147,7 @@ function addTransaction() {
         timeSpent: timeSpent,
         difference: difference,
         creditedMinutes: creditedMinutes,
-        timestamp: new Date().toLocaleString(),
+        timestamp: new Date().toISOString(),
         source: 'modal',
         assistant: lastReco ? {
             lastRecoKey: lastReco.key,
@@ -2189,7 +2193,7 @@ function paralyzeFromModal() {
     const seconds = (parsed !== null) ? (existingPaused + parsed) : existingPaused;
 
     if (!Number.isFinite(seconds) || seconds < 0) {
-        alert('Tempo inválido para paralisar. Use HH:MM:SS ou minutos.');
+        alert('Tempo inválido para paralisar. Use MM:SS, HH:MM:SS ou minutos.');
         return;
     }
 
