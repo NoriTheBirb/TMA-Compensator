@@ -396,7 +396,11 @@ export class AppStateService {
     this.lunchStyleEnabled.set(this.storage.getLunchStyleEnabled());
     this.loadOrInitAnalytics();
 
-    this.pausedWork.set(this.storage.getPausedWorkStore());
+    // Migrate paused-work storage to the normalized (queue) format.
+    // This prevents broken resume/discard when older installs stored single objects or entries without ids.
+    const paused = this.storage.getPausedWorkStore();
+    this.pausedWork.set(paused);
+    this.storage.setPausedWorkStore(paused);
 
     const shiftStartOrNull = this.storage.getShiftStartSecondsOrNull();
     this.shiftStartSeconds.set(this.normalizeShiftStartSeconds(shiftStartOrNull ?? DEFAULT_SHIFT_START_SECONDS));
