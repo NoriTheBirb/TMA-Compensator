@@ -139,7 +139,29 @@ export class AuthService {
 
   async signOut(): Promise<void> {
     this.ensureReady();
-    const { error } = await this.sb.supabase.auth.signOut();
-    if (error) throw error;
+
+    // Best-effort: stop realtime channels immediately so the UI calms down on logout.
+    try {
+      (this.sb.supabase as any)?.removeAllChannels?.();
+    } catch {
+      // ignore
+    }
+
+    // Prefer the default sign-out (may call the network). If that fails (offline, etc),
+    // fallback to local sign-out so the app session is still cleared.
+    try {
+      const { error } = await this.sb.supabase.auth.signOut();
+      if (error) throw error;
+      return;
+    } catch (e) {
+      try {
+        const { error } = await (this.sb.supabase.auth as any).signOut({ scope: 'local' });
+        if (error) throw error;
+        return;
+      } catch {
+        // Re-throw the original error; local signout also failed.
+        throw e;
+      }
+    }
   }
 }
