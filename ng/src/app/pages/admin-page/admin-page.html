@@ -680,6 +680,15 @@
                 <button
                   class="sidebar-action sidebar-action--danger"
                   type="button"
+                  (click)="deleteCorrectionRequest()"
+                  [disabled]="correctionResolving() || (sel.status || '').toLowerCase() !== 'pending'"
+                  title="Excluir sem responder"
+                >
+                  {{ correctionResolving() ? 'Processando…' : 'Excluir' }}
+                </button>
+                <button
+                  class="sidebar-action sidebar-action--danger"
+                  type="button"
                   (click)="rejectCorrection()"
                   [disabled]="correctionResolving() || (sel.status || '').toLowerCase() !== 'pending'"
                 >

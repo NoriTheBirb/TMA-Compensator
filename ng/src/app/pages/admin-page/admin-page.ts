@@ -1089,6 +1089,36 @@ export class AdminPage {
     }
   }
 
+  protected async deleteCorrectionRequest(): Promise<void> {
+    const r = this.selectedCorrection();
+    if (!r) return;
+
+    const status = String(r.status || '').trim().toLowerCase();
+    if (status !== 'pending') {
+      this.correctionError.set('Só é possível excluir solicitações pendentes.');
+      return;
+    }
+
+    const who = r.userUsername ? `de ${r.userUsername}` : '';
+    const ok = window.confirm(`Excluir esta solicitação de correção ${who}?\n\nIsso não pode ser desfeito.`);
+    if (!ok) return;
+
+    this.correctionResolving.set(true);
+    this.correctionError.set('');
+    try {
+      const res = await this.corrections.deleteRequest(r.id);
+      if (!res.ok) {
+        this.correctionError.set(String(res.error || 'Falha ao excluir.'));
+        return;
+      }
+
+      this.selectedCorrectionId.set(null);
+      void this.refreshCorrectionRequests();
+    } finally {
+      this.correctionResolving.set(false);
+    }
+  }
+
   protected closeBroadcast(): void {
     this.broadcastOpen.set(false);
     this.broadcastError.set('');

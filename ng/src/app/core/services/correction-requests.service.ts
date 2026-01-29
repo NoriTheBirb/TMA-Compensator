@@ -4,6 +4,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 import type { LegacyTransaction } from '../models/transaction';
 import type { CorrectionRequest, CorrectionRequestStatus } from '../models/correction-request';
 import { AuthService } from './auth.service';
+import { CompanionService } from './companion.service';
 import { ProfileService } from './profile.service';
 import { SupabaseService } from './supabase.service';
 
@@ -47,6 +48,7 @@ function mapRowToRequest(r: any): CorrectionRequest {
 @Injectable({ providedIn: 'root' })
 export class CorrectionRequestsService {
   private channel: RealtimeChannel | null = null;
+  private channelKey: string = '';
 
   readonly lastEventAtIso = signal<string>('');
 
@@ -54,6 +56,7 @@ export class CorrectionRequestsService {
     private readonly sb: SupabaseService,
     private readonly auth: AuthService,
     private readonly profile: ProfileService,
+    private readonly companion: CompanionService,
   ) {
     effect(() => {
       if (!this.sb.ready()) {
@@ -69,7 +72,12 @@ export class CorrectionRequestsService {
 
       // Needs profile to know if this user is admin.
       const isAdmin = this.profile.isAdmin();
-      void this.startRealtime(uid, isAdmin);
+
+      const nextKey = `${uid}::${isAdmin ? 'admin' : 'user'}`;
+      if (this.channel && this.channelKey === nextKey) return;
+
+      this.stopRealtime();
+      void this.startRealtime(uid, isAdmin, nextKey);
     });
   }
 
@@ -80,6 +88,7 @@ export class CorrectionRequestsService {
       // ignore
     }
     this.channel = null;
+    this.channelKey = '';
   }
 
   private tryDesktopNotify(title: string, body: string): void {
@@ -124,7 +133,7 @@ export class CorrectionRequestsService {
     }
   }
 
-  private async startRealtime(userId: string, isAdmin: boolean): Promise<void> {
+  private async startRealtime(userId: string, isAdmin: boolean, key: string): Promise<void> {
     if (this.channel) return;
 
     // Admins listen to all requests; users only listen to their own.
@@ -148,6 +157,12 @@ export class CorrectionRequestsService {
               if (String(r.status || '') === 'pending') {
                 const who = r.userUsername ? `de ${r.userUsername}` : 'de um usuário';
                 this.tryDesktopNotify('Nova solicitação de correção', `${who}.`);
+                this.companion.nudge(
+                  `corr_req_admin_${r.id}`,
+                  `Nova solicitação de correção ${who}.`,
+                  'simple',
+                  { title: 'Noir', autoCloseMs: 9000 },
+                );
               }
             }
 
@@ -158,6 +173,12 @@ export class CorrectionRequestsService {
                 const adminName = r.adminUsername ? String(r.adminUsername) : 'Admin';
                 const label = status === 'approved' ? 'aprovada' : 'rejeitada';
                 this.tryDesktopNotify('Solicitação de correção', `${label} por ${adminName}.`);
+                this.companion.nudge(
+                  `corr_req_user_${r.id}_${status}`,
+                  `Sua solicitação foi ${label} por ${adminName}.`,
+                  'simple',
+                  { title: 'Noir', autoCloseMs: 9000 },
+                );
               }
             }
           } catch {
@@ -167,10 +188,32 @@ export class CorrectionRequestsService {
       );
 
     this.channel = ch;
+    this.channelKey = key;
     try {
       await ch.subscribe();
     } catch {
       // ignore
+    }
+  }
+
+  async deleteRequest(requestIdRaw: string): Promise<{ ok: boolean; error?: string }> {
+    const uid = this.auth.userId();
+    if (!uid) return { ok: false, error: 'Sem login.' };
+    if (!this.sb.ready()) return { ok: false, error: 'Supabase não configurado.' };
+
+    const requestId = String(requestIdRaw || '').trim();
+    if (!requestId) return { ok: false, error: 'Solicitação inválida.' };
+
+    try {
+      const { error } = await this.sb.supabase
+        .from('correction_requests')
+        .delete()
+        .eq('id', requestId);
+
+      if (error) return { ok: false, error: String((error as any)?.message || 'Falha ao excluir solicitação.') };
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : 'Falha ao excluir solicitação.' };
     }
   }
 

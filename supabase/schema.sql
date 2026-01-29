@@ -71,6 +71,28 @@ create table if not exists public.user_presence (
 );
 
 
+-- Correction requests (user asks admin to fix a wrong account)
+create table if not exists public.correction_requests (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  user_username text,
+  tx_id uuid references public.transactions(id) on delete set null,
+  tx_snapshot jsonb not null default '{}'::jsonb,
+  user_message text not null default '',
+  status text not null default 'pending',
+  admin_id uuid,
+  admin_username text,
+  admin_note text,
+  patch jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  resolved_at timestamptz
+);
+
+create index if not exists idx_correction_requests_user_id on public.correction_requests(user_id);
+create index if not exists idx_correction_requests_status_created on public.correction_requests(status, created_at desc);
+
+
 
 -- Estoque (inventory): remaining accounts available.
 create table if not exists public.inventory (
@@ -234,6 +256,7 @@ alter table public.inventory enable row level security;
 alter table public.app_config enable row level security;
 alter table public.broadcasts enable row level security;
 alter table public.broadcast_reads enable row level security;
+alter table public.correction_requests enable row level security;
 
 -- Helper: admin check without RLS recursion.
 -- SECURITY DEFINER runs as the function owner (typically postgres) and bypasses RLS
@@ -364,6 +387,34 @@ create policy "transactions_delete_own"
 drop policy if exists "transactions_delete_admin_all" on public.transactions;
 create policy "transactions_delete_admin_all"
   on public.transactions for delete
+  using (public.is_admin());
+
+
+-- Policies: correction_requests
+drop policy if exists "correction_requests_select_own" on public.correction_requests;
+create policy "correction_requests_select_own"
+  on public.correction_requests for select
+  using (auth.uid() = user_id);
+
+drop policy if exists "correction_requests_select_admin_all" on public.correction_requests;
+create policy "correction_requests_select_admin_all"
+  on public.correction_requests for select
+  using (public.is_admin());
+
+drop policy if exists "correction_requests_insert_own" on public.correction_requests;
+create policy "correction_requests_insert_own"
+  on public.correction_requests for insert
+  with check (auth.uid() = user_id);
+
+drop policy if exists "correction_requests_update_admin" on public.correction_requests;
+create policy "correction_requests_update_admin"
+  on public.correction_requests for update
+  using (public.is_admin())
+  with check (public.is_admin());
+
+drop policy if exists "correction_requests_delete_admin" on public.correction_requests;
+create policy "correction_requests_delete_admin"
+  on public.correction_requests for delete
   using (public.is_admin());
 
 
@@ -528,6 +579,16 @@ begin
     from pg_publication_tables
     where pubname = 'supabase_realtime'
       and schemaname = 'public'
+      and tablename = 'correction_requests'
+  ) then
+    alter publication supabase_realtime add table public.correction_requests;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
       and tablename = 'app_config'
   ) then
     alter publication supabase_realtime add table public.app_config;
@@ -576,6 +637,7 @@ grant update (username, updated_at) on table public.profiles to authenticated;
 grant select, insert, update, delete on table public.transactions to authenticated;
 grant select, insert, update, delete on table public.user_presence to authenticated;
 grant select, insert, update, delete on table public.settings to authenticated;
+grant select, insert, update, delete on table public.correction_requests to authenticated;
 
 -- Inventory: everyone reads; only admins update (enforced by RLS).
 grant select, insert, update on table public.inventory to authenticated;
