@@ -4,6 +4,9 @@ import { STORAGE_KEYS } from './storage-keys';
 import type { LegacyTransaction } from '../models/transaction';
 import type { ActiveFlowTimerPersisted, PausedWorkEntry, PausedWorkStore } from '../models/paused-work';
 
+export type CitrixRegion01 = { x: number; y: number; w: number; h: number };
+export type CitrixCaptureRegions = { sgss: CitrixRegion01; tipoEmpresa: CitrixRegion01 };
+
 export interface LunchWindow {
   start: number;
   end: number;
@@ -214,6 +217,64 @@ export class StorageService {
   clearActiveFlowTimer(): void {
     try {
       this.ls?.removeItem(STORAGE_KEYS.activeFlowTimer);
+    } catch {
+      // ignore
+    }
+  }
+
+  getCitrixCaptureRegionsOrNull(): CitrixCaptureRegions | null {
+    const raw = this.ls?.getItem(STORAGE_KEYS.citrixCaptureRegions);
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      const sgss = parsed?.sgss;
+      const tipoEmpresa = parsed?.tipoEmpresa;
+      if (!sgss || !tipoEmpresa) return null;
+      const norm = (r: any): CitrixRegion01 | null => {
+        const x = Number(r?.x);
+        const y = Number(r?.y);
+        const w = Number(r?.w);
+        const h = Number(r?.h);
+        if (![x, y, w, h].every(Number.isFinite)) return null;
+        return { x, y, w, h };
+      };
+      const a = norm(sgss);
+      const b = norm(tipoEmpresa);
+      if (!a || !b) return null;
+      return { sgss: a, tipoEmpresa: b };
+    } catch {
+      return null;
+    }
+  }
+
+  setCitrixCaptureRegions(value: CitrixCaptureRegions | null): void {
+    try {
+      if (!value) {
+        this.ls?.removeItem(STORAGE_KEYS.citrixCaptureRegions);
+        return;
+      }
+      this.ls?.setItem(STORAGE_KEYS.citrixCaptureRegions, JSON.stringify(value));
+    } catch {
+      // ignore
+    }
+  }
+
+  getCitrixCaptureScreenIndexOrNull(): number | null {
+    const raw = this.ls?.getItem(STORAGE_KEYS.citrixCaptureScreen);
+    if (!raw) return null;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0) return null;
+    return Math.floor(n);
+  }
+
+  setCitrixCaptureScreenIndex(value: number | null): void {
+    try {
+      if (value === null || value === undefined) {
+        this.ls?.removeItem(STORAGE_KEYS.citrixCaptureScreen);
+        return;
+      }
+      const n = Math.max(0, Math.floor(Number(value) || 0));
+      this.ls?.setItem(STORAGE_KEYS.citrixCaptureScreen, String(n));
     } catch {
       // ignore
     }

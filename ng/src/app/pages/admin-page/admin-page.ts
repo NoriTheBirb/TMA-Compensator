@@ -6,11 +6,14 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 
 import { AuthService } from '../../core/services/auth.service';
 import { CompanionService } from '../../core/services/companion.service';
+import { AppConfigService } from '../../core/services/app-config.service';
 import { ProfileService } from '../../core/services/profile.service';
+import type { CorrectionRequest } from '../../core/models/correction-request';
+import { CorrectionRequestsService } from '../../core/services/correction-requests.service';
 import { SupabaseService } from '../../core/services/supabase.service';
 import { quotaWeightForItem } from '../../core/utils/assistant';
 import { drawWorkHoursByHourStacked } from '../../core/utils/report';
-import { formatSignedTime, secondsToTime } from '../../core/utils/time';
+import { formatSignedTime, secondsToTime, timeToSeconds } from '../../core/utils/time';
 import { localDayKey } from '../../core/utils/day';
 import { saoPauloDayRangeIsoFromYmd, saoPauloDayKey } from '../../core/utils/tz';
 
@@ -26,6 +29,8 @@ type TxLite = {
   type: string;
   tma: number;
   time_spent: number;
+  sgss?: string | null;
+  tipo_empresa?: string | null;
   created_at: string;
 };
 
@@ -46,6 +51,36 @@ type BroadcastReadLite = {
   user_id: string;
   username: string;
   seen_at: string;
+};
+
+type PresenceLite = {
+  user_id: string;
+  active_key: string | null;
+  active_item: string | null;
+  active_type: string | null;
+  active_started_at: string | null;
+  active_base_seconds: number | null;
+  updated_at: string;
+};
+
+type InventoryLite = {
+  id: string;
+  remaining: number;
+  updated_at: string;
+};
+
+type TimelineSegView = {
+  leftPct: number;
+  widthPct: number;
+  kind: 'work' | 'tt' | 'idle';
+  active: boolean;
+  title: string;
+};
+
+type TimelineMarkerView = {
+  leftPct: number;
+  kind: 'day_start' | 'day_end';
+  title: string;
 };
 
 type UserDayRow = {
@@ -83,6 +118,27 @@ function formatAnyError(e: unknown, fallback: string): string {
   } catch {
     return fallback;
   }
+}
+
+function pad2(n: number): string {
+  const s = String(Math.floor(Number(n) || 0));
+  return s.length >= 2 ? s : `0${s}`;
+}
+
+function isoToDatetimeLocalValue(iso: unknown): string {
+  const s = String(iso || '').trim();
+  if (!s) return '';
+  const d = new Date(s);
+  if (!Number.isFinite(d.getTime())) return '';
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+function datetimeLocalValueToIso(value: unknown): string | null {
+  const s = String(value || '').trim();
+  if (!s) return null;
+  const d = new Date(s);
+  if (!Number.isFinite(d.getTime())) return null;
+  return d.toISOString();
 }
 
 @Component({
@@ -130,15 +186,81 @@ export class AdminPage {
   protected readonly selectedBroadcastId = signal<string | null>(null);
   protected readonly broadcastReadsLoading = signal(false);
 
+  protected readonly correctionOpen = signal(false);
+  protected readonly correctionLoading = signal(false);
+  protected readonly correctionResolving = signal(false);
+  protected readonly correctionError = signal('');
+  protected readonly selectedCorrectionId = signal<string | null>(null);
+
+  private readonly correctionRows = signal<CorrectionRequest[]>([]);
+  protected readonly correctionSortedRows = computed(() => {
+    const rows = this.correctionRows();
+    const norm = (s: unknown) => String(s || '').trim().toLowerCase();
+    const rank = (s: unknown) => {
+      const v = norm(s);
+      if (v === 'pending') return 0;
+      if (v === 'approved') return 1;
+      if (v === 'rejected') return 2;
+      return 3;
+    };
+
+    return [...rows].sort((a, b) => {
+      const ra = rank(a.status);
+      const rb = rank(b.status);
+      if (ra !== rb) return ra - rb;
+      const ca = String(a.createdAt || '');
+      const cb = String(b.createdAt || '');
+      if (ca !== cb) return cb.localeCompare(ca);
+      return String(a.id || '').localeCompare(String(b.id || ''));
+    });
+  });
+  protected readonly selectedCorrection = computed(() => {
+    const id = this.selectedCorrectionId();
+    if (!id) return null;
+    return this.correctionRows().find(r => r.id === id) ?? null;
+  });
+
+  protected readonly corrDraftItem = signal('');
+  protected readonly corrDraftType = signal('');
+  protected readonly corrDraftTma = signal<string>('');
+  protected readonly corrDraftTimeSpent = signal<string>('');
+  protected readonly corrDraftFinishStatus = signal('');
+  protected readonly corrDraftClientTimestampLocal = signal('');
+  protected readonly corrDraftStartedAtLocal = signal('');
+  protected readonly corrDraftEndedAtLocal = signal('');
+  protected readonly corrDraftSgss = signal('');
+  protected readonly corrDraftTipoEmpresa = signal('');
+  protected readonly corrDraftAdminNote = signal('');
+
   private readonly broadcastHistory = signal<BroadcastLite[]>([]);
   private readonly broadcastReadCounts = signal<Record<string, number>>({});
   private readonly broadcastReads = signal<BroadcastReadLite[]>([]);
 
   private readonly profiles = signal<ProfileLite[]>([]);
   private readonly transactionsToday = signal<TxLite[]>([]);
+  private readonly presence = signal<PresenceLite[]>([]);
+  private readonly inventoryRow = signal<InventoryLite | null>(null);
+
+  protected readonly inventoryRemaining = computed<number | null>(() => {
+    const r = this.inventoryRow();
+    if (!r) return null;
+    const n = Math.floor(Number((r as any)?.remaining) || 0);
+    return Number.isFinite(n) ? Math.max(0, n) : null;
+  });
+
+  protected readonly inventoryUpdatedAtIso = computed<string | null>(() => {
+    const r = this.inventoryRow();
+    const iso = String((r as any)?.updated_at || '').trim();
+    return iso || null;
+  });
+
+  protected readonly inventoryDraft = signal<string>('');
+  protected readonly inventorySaving = signal(false);
+  protected readonly inventoryError = signal('');
 
   private realtime?: RealtimeChannel;
   private refreshTimer: number | null = null;
+  private clockTimer: number | null = null;
 
   private readonly baseRows = computed<UserDayRow[]>(() => {
     const profiles = this.profiles();
@@ -255,6 +377,37 @@ export class AdminPage {
     return this.transactionsToday().filter((t) => t.user_id === id);
   });
 
+  private readonly presenceByUser = computed(() => {
+    const map = new Map<string, PresenceLite>();
+    for (const p of this.presence()) {
+      map.set(p.user_id, p);
+    }
+    return map;
+  });
+
+  protected inProgressText(userId: string): string | null {
+    const p = this.presenceByUser().get(String(userId || '').trim());
+    if (!p) return null;
+
+    const updatedMs = Date.parse(String(p.updated_at || '').trim());
+    if (!Number.isFinite(updatedMs)) return null;
+
+    // Client heartbeats every ~45s; keep a little slack.
+    if (Date.now() - updatedMs > 2.5 * 60 * 1000) return null;
+
+    const key = String(p.active_key || '').trim();
+    if (!key) return null;
+
+    const item = String(p.active_item || '').trim();
+    const type = String(p.active_type || '').trim();
+    const suffix = [item, type].filter(Boolean).join(' • ');
+    return suffix ? `Em progresso: ${suffix}` : 'Em progresso';
+  }
+
+  protected isInProgress(userId: string): boolean {
+    return Boolean(this.inProgressText(userId));
+  }
+
   protected readonly selectedBroadcast = computed<BroadcastLite | null>(() => {
     const id = this.selectedBroadcastId();
     if (!id) return null;
@@ -297,6 +450,7 @@ export class AdminPage {
       const type = String((t as any)?.type || '').trim().toLowerCase();
       if (type !== 'time_tracker') continue;
       const key = String(t.item || '').trim() || '(vazio)';
+      if (key === this.workdayStartItem || key === this.workdayEndItem) continue;
       counts.set(key, (counts.get(key) ?? 0) + 1);
     }
     return Array.from(counts.entries())
@@ -312,6 +466,179 @@ export class AdminPage {
 
   private readonly ttType = 'time_tracker';
   private readonly involuntaryIdleItem = 'Ociosidade involuntaria';
+  private readonly workdayStartItem = 'Início do dia';
+  private readonly workdayEndItem = 'Fim do dia';
+
+  private readonly selectedDayRangeMs = computed(() => {
+    const ymd = String(this.selectedDayYmd() || '').trim() || saoPauloDayKey(new Date());
+    const { startIso, endIso } = saoPauloDayRangeIsoFromYmd(ymd);
+    const startMs = Date.parse(startIso);
+    const endMs = Date.parse(endIso);
+    return { ymd, startIso, endIso, startMs, endMs };
+  });
+
+  protected readonly timelineNowPct = computed<number | null>(() => {
+    // Tie to refresh timestamp so it updates when realtime refresh fires.
+    void this.asOfIso();
+
+    const today = saoPauloDayKey(new Date());
+    const { ymd, startMs, endMs } = this.selectedDayRangeMs();
+    if (ymd !== today) return null;
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return null;
+
+    const now = Date.now();
+    const clamped = Math.max(startMs, Math.min(endMs, now));
+    const pct = ((clamped - startMs) / (endMs - startMs)) * 100;
+    return Math.max(0, Math.min(100, pct));
+  });
+
+  protected readonly timelineDayPart = computed<number | null>(() => {
+    const nowPct = this.timelineNowPct();
+    if (nowPct === null) return null;
+    const idx = Math.floor(nowPct / 25);
+    return Math.max(0, Math.min(3, idx));
+  });
+
+  private readonly timelineByUser = computed(() => {
+    const { startMs, endMs } = this.selectedDayRangeMs();
+    const rangeMs = endMs - startMs;
+
+    const result = new Map<string, TimelineSegView[]>();
+    for (const p of this.profiles()) {
+      result.set(p.user_id, []);
+    }
+
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || rangeMs <= 0) return result;
+
+    const clamp = (t: number) => Math.max(startMs, Math.min(endMs, t));
+    const pct = (t: number) => ((t - startMs) / rangeMs) * 100;
+    const minWidthPct = 0.6;
+
+    const kindFor = (typeRaw: unknown, itemRaw: unknown): 'work' | 'tt' | 'idle' => {
+      const type = String(typeRaw || '').trim().toLowerCase();
+      const item = String(itemRaw || '').trim();
+      if (type === this.ttType) {
+        if (item === this.involuntaryIdleItem) return 'idle';
+        return 'tt';
+      }
+      return 'work';
+    };
+
+    for (const t of this.transactionsToday()) {
+      const userId = String((t as any)?.user_id || '').trim();
+      if (!userId) continue;
+
+      const endAtMs = Date.parse(String((t as any)?.created_at || '').trim());
+      if (!Number.isFinite(endAtMs)) continue;
+
+      const spentSeconds = Math.max(0, Math.floor(Number((t as any)?.time_spent) || 0));
+      const startAtMs = endAtMs - spentSeconds * 1000;
+
+      const s = clamp(startAtMs);
+      const e = clamp(endAtMs);
+      if (!(e > s)) continue;
+
+      const leftPct = Math.max(0, Math.min(100, pct(s)));
+      const widthPct = Math.max(minWidthPct, Math.min(100 - leftPct, pct(e) - pct(s)));
+      const kind = kindFor((t as any)?.type, (t as any)?.item);
+      const title = `${String((t as any)?.item || '').trim()} • ${String((t as any)?.type || '').trim()} • ${secondsToTime(spentSeconds)}`;
+
+      const list = result.get(userId) ?? [];
+      list.push({ leftPct, widthPct, kind, active: false, title });
+      result.set(userId, list);
+    }
+
+    for (const p of this.presence()) {
+      const userId = String((p as any)?.user_id || '').trim();
+      if (!userId) continue;
+
+      const activeKey = String((p as any)?.active_key || '').trim();
+      if (!activeKey) continue;
+
+      const updatedAtMs = Date.parse(String((p as any)?.updated_at || '').trim());
+      if (!Number.isFinite(updatedAtMs)) continue;
+      if (Date.now() - updatedAtMs > 2.5 * 60 * 1000) continue;
+
+      const startedAtMsRaw = Date.parse(String((p as any)?.active_started_at || '').trim());
+      const baseSeconds = Math.max(0, Math.floor(Number((p as any)?.active_base_seconds) || 0));
+      const startedAtMs = Number.isFinite(startedAtMsRaw) ? startedAtMsRaw : Number.isFinite(updatedAtMs) ? updatedAtMs - baseSeconds * 1000 : NaN;
+      if (!Number.isFinite(startedAtMs)) continue;
+
+      const s = clamp(startedAtMs);
+      const e = clamp(Date.now());
+      if (!(e > s)) continue;
+
+      const leftPct = Math.max(0, Math.min(100, pct(s)));
+      const widthPct = Math.max(minWidthPct, Math.min(100 - leftPct, pct(e) - pct(s)));
+      const kind = kindFor((p as any)?.active_type, (p as any)?.active_item);
+      const item = String((p as any)?.active_item || '').trim();
+      const type = String((p as any)?.active_type || '').trim();
+      const title = ['Em progresso', item, type].filter(Boolean).join(' • ');
+
+      const list = result.get(userId) ?? [];
+      list.push({ leftPct, widthPct, kind, active: true, title });
+      result.set(userId, list);
+    }
+
+    for (const [userId, list] of result.entries()) {
+      list.sort((a, b) => (a.leftPct - b.leftPct) || (Number(a.active) - Number(b.active)));
+      result.set(userId, list);
+    }
+
+    return result;
+  });
+
+  private readonly timelineMarkersByUser = computed(() => {
+    const { startMs, endMs } = this.selectedDayRangeMs();
+    const rangeMs = endMs - startMs;
+
+    const result = new Map<string, TimelineMarkerView[]>();
+    for (const p of this.profiles()) {
+      result.set(p.user_id, []);
+    }
+
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || rangeMs <= 0) return result;
+
+    const clamp = (t: number) => Math.max(startMs, Math.min(endMs, t));
+    const pct = (t: number) => ((t - startMs) / rangeMs) * 100;
+
+    for (const t of this.transactionsToday()) {
+      const userId = String((t as any)?.user_id || '').trim();
+      if (!userId) continue;
+
+      const type = String((t as any)?.type || '').trim().toLowerCase();
+      if (type !== this.ttType) continue;
+
+      const item = String((t as any)?.item || '').trim();
+      if (item !== this.workdayStartItem && item !== this.workdayEndItem) continue;
+
+      const atMs = Date.parse(String((t as any)?.created_at || '').trim());
+      if (!Number.isFinite(atMs)) continue;
+
+      const leftPct = Math.max(0, Math.min(100, pct(clamp(atMs))));
+      const kind: TimelineMarkerView['kind'] = item === this.workdayEndItem ? 'day_end' : 'day_start';
+      const title = item;
+
+      const list = result.get(userId) ?? [];
+      list.push({ leftPct, kind, title });
+      result.set(userId, list);
+    }
+
+    for (const [userId, list] of result.entries()) {
+      list.sort((a, b) => a.leftPct - b.leftPct);
+      result.set(userId, list);
+    }
+
+    return result;
+  });
+
+  protected timelineSegments(userId: string): TimelineSegView[] {
+    return this.timelineByUser().get(String(userId || '').trim()) ?? [];
+  }
+
+  protected timelineMarkers(userId: string): TimelineMarkerView[] {
+    return this.timelineMarkersByUser().get(String(userId || '').trim()) ?? [];
+  }
 
   protected readonly selectedTimeStats = computed(() => {
     const tx = this.selectedTx();
@@ -335,6 +662,11 @@ export class AdminPage {
 
       const type = String((t as any)?.type || '').trim().toLowerCase();
       const spent = Math.max(0, Math.floor(Number(t.time_spent) || 0));
+
+      const itemText = String(t.item || '').trim();
+      if (type === this.ttType && (itemText === this.workdayStartItem || itemText === this.workdayEndItem)) {
+        continue;
+      }
 
       if (type === this.ttType) {
         ttSeconds += spent;
@@ -443,6 +775,7 @@ export class AdminPage {
       const type = String((t as any)?.type || '').trim().toLowerCase();
       if (type !== this.ttType) continue;
       const item = String(t.item || '').trim() || '(vazio)';
+      if (item === this.workdayStartItem || item === this.workdayEndItem) continue;
       const spent = Math.max(0, Math.floor(Number(t.time_spent) || 0));
       const cur = agg.get(item) || { item, seconds: 0, count: 0 };
       cur.seconds += spent;
@@ -500,10 +833,52 @@ export class AdminPage {
     private readonly auth: AuthService,
     protected readonly profile: ProfileService,
     protected readonly companion: CompanionService,
+    protected readonly appConfig: AppConfigService,
+    private readonly corrections: CorrectionRequestsService,
     private readonly router: Router,
   ) {
     void this.refresh();
     this.ensureRealtime();
+
+    // Keep the timeline ("now" and active segments) moving even if no DB events fire.
+    this.clockTimer = window.setInterval(() => {
+      this.asOfIso.set(new Date().toISOString());
+    }, 15000);
+  }
+
+  protected async saveInventory(): Promise<void> {
+    if (!this.sb.ready()) {
+      this.inventoryError.set('Supabase não configurado.');
+      return;
+    }
+
+    const remaining = Math.max(0, Math.floor(Number(this.inventoryDraft() || 0)));
+    if (!Number.isFinite(remaining)) {
+      this.inventoryError.set('Valor inválido.');
+      return;
+    }
+
+    this.inventorySaving.set(true);
+    this.inventoryError.set('');
+    try {
+      const nowIso = new Date().toISOString();
+      const { error } = await this.sb.supabase.from('inventory').upsert(
+        { id: 'accounts', remaining, updated_at: nowIso },
+        { onConflict: 'id' },
+      );
+      if (error) throw error;
+
+      this.inventoryRow.set({ id: 'accounts', remaining, updated_at: nowIso });
+      this.asOfIso.set(nowIso);
+    } catch (e) {
+      this.inventoryError.set(formatAnyError(e, 'Falha ao salvar estoque.'));
+    } finally {
+      this.inventorySaving.set(false);
+    }
+  }
+
+  protected setSprintModeEnabled(enabled: boolean): void {
+    void this.appConfig.setSprintModeEnabled(Boolean(enabled));
   }
 
   protected setCompanionEnabled(enabled: boolean): void {
@@ -513,6 +888,205 @@ export class AdminPage {
   protected openBroadcast(): void {
     this.broadcastError.set('');
     this.broadcastOpen.set(true);
+  }
+
+  protected openCorrectionRequests(): void {
+    this.correctionError.set('');
+    if (this.sidebarShown()) this.closeSidebar();
+    this.correctionOpen.set(true);
+    void this.refreshCorrectionRequests();
+  }
+
+  protected closeCorrectionRequests(): void {
+    this.correctionOpen.set(false);
+    this.correctionError.set('');
+    this.selectedCorrectionId.set(null);
+  }
+
+  protected correctionStatusLabel(status: unknown): string {
+    const s = String(status || '').trim().toLowerCase();
+    if (s === 'pending') return 'Pendente';
+    if (s === 'approved') return 'Aprovada';
+    if (s === 'rejected') return 'Rejeitada';
+    return String(status || '—') || '—';
+  }
+
+  protected selectCorrection(r: CorrectionRequest): void {
+    const id = String(r?.id || '').trim();
+    if (!id) return;
+    this.selectedCorrectionId.set(id);
+    this.seedCorrectionDraft(r);
+  }
+
+  private seedCorrectionDraft(r: CorrectionRequest): void {
+    const snap = (r?.txSnapshot || {}) as any;
+
+    this.corrDraftItem.set(String(snap?.item || '').trim());
+    this.corrDraftType.set(String(snap?.type || '').trim());
+
+    const tma = Math.max(0, Math.floor(Number(snap?.tma) || 0));
+    const timeSpent = Math.max(0, Math.floor(Number(snap?.timeSpent) || 0));
+    this.corrDraftTma.set(tma ? secondsToTime(tma) : '');
+    this.corrDraftTimeSpent.set(timeSpent ? secondsToTime(timeSpent) : '');
+
+    this.corrDraftFinishStatus.set(String(snap?.finishStatus || '').trim());
+    this.corrDraftSgss.set(String(snap?.sgss || '').trim());
+    this.corrDraftTipoEmpresa.set(String(snap?.tipoEmpresa || '').trim());
+
+    const clientIso = String(snap?.timestamp || snap?.createdAtIso || '').trim();
+    this.corrDraftClientTimestampLocal.set(isoToDatetimeLocalValue(clientIso));
+
+    const patch = (r?.patch || {}) as any;
+    this.corrDraftStartedAtLocal.set(isoToDatetimeLocalValue(patch?.startedAtIso));
+    this.corrDraftEndedAtLocal.set(isoToDatetimeLocalValue(patch?.endedAtIso));
+    this.corrDraftAdminNote.set(String(r?.adminNote || '').trim());
+  }
+
+  protected async refreshCorrectionRequests(): Promise<void> {
+    if (!this.sb.ready()) {
+      this.correctionError.set('Supabase não configurado.');
+      return;
+    }
+
+    this.correctionLoading.set(true);
+    this.correctionError.set('');
+    try {
+      const rows = await this.corrections.fetchAllRequests();
+      this.correctionRows.set(rows);
+
+      const selected = this.selectedCorrectionId();
+      const stillExists = selected ? rows.some(r => r.id === selected) : false;
+      if (!stillExists) {
+        const firstPending = rows.find(r => String(r.status || '').toLowerCase() === 'pending');
+        const pick = firstPending ?? rows[0] ?? null;
+        if (pick) {
+          this.selectedCorrectionId.set(pick.id);
+          this.seedCorrectionDraft(pick);
+        }
+      }
+    } catch (e) {
+      this.correctionError.set(formatAnyError(e, 'Falha ao carregar solicitações.'));
+    } finally {
+      this.correctionLoading.set(false);
+    }
+  }
+
+  private parseDraftNumber(value: unknown): number | undefined {
+    const n = Math.floor(Number(String(value || '').trim()));
+    if (!Number.isFinite(n)) return undefined;
+    return Math.max(0, n);
+  }
+
+  private parseDraftSeconds(value: unknown): number | undefined {
+    const raw = String(value || '').trim();
+    if (!raw) return undefined;
+
+    // If admin types a duration like "MM:SS" or "HH:MM:SS", parse it.
+    if (raw.includes(':')) {
+      const sec = timeToSeconds(raw);
+      if (sec == null) return undefined;
+      return Math.max(0, Math.floor(sec));
+    }
+
+    // Fallback: treat plain numbers as seconds.
+    const n = Math.floor(Number(raw));
+    if (!Number.isFinite(n)) return undefined;
+    return Math.max(0, n);
+  }
+
+  protected async approveCorrection(): Promise<void> {
+    const r = this.selectedCorrection();
+    if (!r) return;
+
+    const txId = String(r.txId || '').trim();
+    if (!txId) {
+      this.correctionError.set('Essa solicitação não tem tx_id.');
+      return;
+    }
+
+    const item = String(this.corrDraftItem() || '').trim();
+    const type = String(this.corrDraftType() || '').trim();
+    if (!item || !type) {
+      this.correctionError.set('Item e tipo são obrigatórios para aprovar.');
+      return;
+    }
+
+    const tma = this.parseDraftSeconds(this.corrDraftTma());
+    const timeSpent = this.parseDraftSeconds(this.corrDraftTimeSpent());
+
+    const clientTimestampIso = datetimeLocalValueToIso(this.corrDraftClientTimestampLocal());
+    const startedAtIso = datetimeLocalValueToIso(this.corrDraftStartedAtLocal());
+    const endedAtIso = datetimeLocalValueToIso(this.corrDraftEndedAtLocal());
+
+    const finishStatus = String(this.corrDraftFinishStatus() || '').trim();
+    const sgss = String(this.corrDraftSgss() || '').trim();
+    const tipoEmpresa = String(this.corrDraftTipoEmpresa() || '').trim();
+
+    const patch: any = {
+      item,
+      type,
+    };
+
+    if (finishStatus) patch.finishStatus = finishStatus;
+    if (sgss) patch.sgss = sgss;
+    if (tipoEmpresa) patch.tipoEmpresa = tipoEmpresa;
+    if (typeof tma === 'number') patch.tma = tma;
+    if (typeof timeSpent === 'number') patch.timeSpent = timeSpent;
+    if (clientTimestampIso) patch.clientTimestampIso = clientTimestampIso;
+    if (startedAtIso) patch.startedAtIso = startedAtIso;
+    if (endedAtIso) patch.endedAtIso = endedAtIso;
+
+    this.correctionResolving.set(true);
+    this.correctionError.set('');
+    try {
+      const res = await this.corrections.resolveRequest({
+        requestId: r.id,
+        txId,
+        status: 'approved',
+        adminNote: String(this.corrDraftAdminNote() || '').trim(),
+        patch,
+      });
+
+      if (!res.ok) {
+        this.correctionError.set(String(res.error || 'Falha ao aprovar.'));
+        return;
+      }
+
+      void this.refreshCorrectionRequests();
+    } finally {
+      this.correctionResolving.set(false);
+    }
+  }
+
+  protected async rejectCorrection(): Promise<void> {
+    const r = this.selectedCorrection();
+    if (!r) return;
+
+    const txId = String(r.txId || '').trim();
+    if (!txId) {
+      this.correctionError.set('Essa solicitação não tem tx_id.');
+      return;
+    }
+
+    this.correctionResolving.set(true);
+    this.correctionError.set('');
+    try {
+      const res = await this.corrections.resolveRequest({
+        requestId: r.id,
+        txId,
+        status: 'rejected',
+        adminNote: String(this.corrDraftAdminNote() || '').trim(),
+      });
+
+      if (!res.ok) {
+        this.correctionError.set(String(res.error || 'Falha ao rejeitar.'));
+        return;
+      }
+
+      void this.refreshCorrectionRequests();
+    } finally {
+      this.correctionResolving.set(false);
+    }
   }
 
   protected closeBroadcast(): void {
@@ -551,7 +1125,7 @@ export class AdminPage {
 
       this.broadcastText.set('');
       this.broadcastOpen.set(false);
-      this.companion.speak('Mensagem enviada para todos.', 'simple', { title: 'Admin', autoCloseMs: 5000 });
+      this.companion.sayAdminBroadcastSent();
     } catch (e) {
       const err = e instanceof Error ? e.message : 'Falha ao enviar mensagem.';
       this.broadcastError.set(err);
@@ -700,6 +1274,11 @@ export class AdminPage {
       window.clearTimeout(this.refreshTimer);
       this.refreshTimer = null;
     }
+
+    if (this.clockTimer != null) {
+      window.clearInterval(this.clockTimer);
+      this.clockTimer = null;
+    }
   }
 
   protected openSidebar(): void {
@@ -847,6 +1426,8 @@ export class AdminPage {
         () => this.scheduleRefresh(),
       )
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => this.scheduleRefresh())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_presence' }, () => this.scheduleRefresh())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => this.scheduleRefresh())
       .subscribe();
   }
 
@@ -879,7 +1460,7 @@ export class AdminPage {
       // Today transactions (admin can see all)
       const { data: tx, error: txErr } = await this.sb.supabase
         .from('transactions')
-        .select('user_id, item, type, tma, time_spent, created_at')
+        .select('user_id, item, type, tma, time_spent, sgss, tipo_empresa, created_at')
         .gte('created_at', startIso)
         .lt('created_at', endIso)
         .order('created_at', { ascending: false })
@@ -887,6 +1468,45 @@ export class AdminPage {
 
       if (txErr) throw txErr;
       this.transactionsToday.set(((tx as any) || []) as TxLite[]);
+
+      // Presence (best-effort; DB might not have the table yet)
+      try {
+        const { data: pres, error: presErr } = await this.sb.supabase
+          .from('user_presence')
+          .select('user_id, active_key, active_item, active_type, active_started_at, active_base_seconds, updated_at')
+          .limit(5000);
+
+        if (presErr) throw presErr;
+        this.presence.set(((pres as any) || []) as PresenceLite[]);
+      } catch {
+        this.presence.set([]);
+      }
+
+      // Inventory (best-effort; DB might not have the table yet)
+      try {
+        const { data: inv, error: invErr } = await this.sb.supabase
+          .from('inventory')
+          .select('id, remaining, updated_at')
+          .eq('id', 'accounts')
+          .maybeSingle();
+
+        if (invErr) throw invErr;
+        const mapped = inv
+          ? ({
+              id: String((inv as any)?.id || '').trim() || 'accounts',
+              remaining: Math.max(0, Math.floor(Number((inv as any)?.remaining) || 0)),
+              updated_at: String((inv as any)?.updated_at || '').trim() || new Date().toISOString(),
+            } as InventoryLite)
+          : null;
+        this.inventoryRow.set(mapped);
+
+        // If admin hasn't typed anything yet, default the editor to the server value.
+        if (!String(this.inventoryDraft() || '').trim() && mapped) {
+          this.inventoryDraft.set(String(mapped.remaining));
+        }
+      } catch {
+        this.inventoryRow.set(null);
+      }
 
       this.asOfIso.set(new Date().toISOString());
     } catch (e) {

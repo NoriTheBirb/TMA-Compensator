@@ -79,6 +79,7 @@ body.lunch-mode .btn-reset,
 body.lunch-mode .btn-end-day,
 body.lunch-mode .btn-cancel,
 body.lunch-mode .btn-confirm,
+body.lunch-mode .btn-close,
 body.lunch-mode .btn-lunch-confirm {
     background: rgba(255, 255, 255, 0.92);
     color: var(--text);
@@ -93,6 +94,7 @@ body.lunch-mode .btn-reset:hover,
 body.lunch-mode .btn-end-day:hover,
 body.lunch-mode .btn-cancel:hover,
 body.lunch-mode .btn-confirm:hover,
+body.lunch-mode .btn-close:hover,
 body.lunch-mode .btn-lunch-confirm:hover {
     background: rgba(243, 229, 245, 0.92);
     color: var(--text);
@@ -435,14 +437,21 @@ body .control-header {
     cursor: pointer;
     transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), background 0.18s ease, border-color 0.18s ease;
     box-shadow: none;
-    opacity: 0;
-    transform: translateX(-6px);
+    /* Visible by default (we reuse this class outside the sidebar). */
+    opacity: 1;
+    transform: none;
 }
 
 .sidebar-action:hover {
     transform: translateY(-1px);
     background: color-mix(in oklab, var(--panel) 70%, transparent);
     border-color: color-mix(in oklab, var(--text) 12%, var(--border));
+}
+
+/* Inside the sidebar drawer, keep the entrance animation behavior. */
+.sidebar .sidebar-action {
+    opacity: 0;
+    transform: translateX(-6px);
 }
 
 .sidebar.is-open .sidebar-action {
@@ -1160,18 +1169,34 @@ input:checked + .slider:before {
 }
 
 .info-text {
-    text-align: center;
-    color: var(--accent);
-    font-weight: 600;
+    text-align: left;
+    color: var(--muted);
+    font-weight: 700;
     font-size: 0.9em;
+    line-height: 1.35;
 }
 
 .modal-actions {
     display: flex;
+    flex-wrap: wrap;
     gap: 10px;
-    padding: 20px 25px;
+    padding: 18px 20px;
     border-top: 1px solid var(--border);
-    justify-content: flex-end;
+    justify-content: stretch;
+}
+
+.modal-actions > button {
+    flex: 1 1 140px;
+    min-width: 0;
+}
+
+@media (min-width: 520px) {
+    .modal-actions {
+        justify-content: flex-end;
+    }
+    .modal-actions > button {
+        flex: 0 0 auto;
+    }
 }
 
 /* Primeiro prompt (modal de almoço): ajustes finos dos botões */
@@ -1636,7 +1661,8 @@ body:not(.welcome-lock) .container > *:not(#lunchModal) {
 }
 
 .btn-cancel,
-.btn-confirm {
+.btn-confirm,
+.btn-close {
     padding: 10px 20px;
     border: none;
     border-radius: 6px;
@@ -1675,6 +1701,17 @@ body:not(.welcome-lock) .container > *:not(#lunchModal) {
 
 .btn-confirm {
     border: 1px solid color-mix(in oklab, var(--accent) 55%, var(--border));
+}
+
+.btn-close {
+    border: 1px solid color-mix(in oklab, var(--bad) 55%, var(--border));
+    background: color-mix(in oklab, var(--bad) 18%, transparent);
+    color: var(--text);
+}
+
+.btn-close:hover {
+    filter: brightness(1.04);
+    transform: translateY(-1px);
 }
 
 #flowChoiceText {
@@ -1837,10 +1874,16 @@ body:not(.welcome-lock) .container > *:not(#lunchModal) {
 /* Flow choice modal (Finalize/Paralyze) */
 #flowChoiceModal .info-text {
     margin: 0;
+    color: color-mix(in oklab, var(--text) 88%, var(--muted));
+}
+
+#flowChoiceModal .modal-content {
+    max-width: 520px;
 }
 
 .flow-choice-cancel,
 .flow-choice-paralyze,
+.flow-choice-close,
 .flow-choice-finalize {
     border: 1px solid var(--border);
     background: var(--panel);
@@ -1855,12 +1898,17 @@ body:not(.welcome-lock) .container > *:not(#lunchModal) {
     border-color: color-mix(in oklab, var(--warn) 55%, var(--border));
 }
 
+.flow-choice-close {
+    border-color: color-mix(in oklab, var(--bad) 55%, var(--border));
+}
+
 .flow-choice-finalize {
     border-color: color-mix(in oklab, var(--ok) 55%, var(--border));
 }
 
 .flow-choice-cancel:hover,
 .flow-choice-paralyze:hover,
+.flow-choice-close:hover,
 .flow-choice-finalize:hover {
     filter: brightness(1.04);
 }

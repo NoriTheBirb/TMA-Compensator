@@ -4,6 +4,7 @@ import { adminGuard } from './core/services/admin.guard';
 import { authGuard } from './core/services/auth.guard';
 import { AuthPage } from './pages/auth-page/auth-page';
 import { AdminPage } from './pages/admin-page/admin-page';
+import { CaptureSetupPage } from './pages/capture-setup-page/capture-setup-page';
 import { MainPage } from './pages/main-page/main-page';
 import { ReportPage } from './pages/report-page/report-page';
 
@@ -20,6 +21,11 @@ export const routes: Routes = [
 	{
 		path: 'report',
 		component: ReportPage,
+		canActivate: [authGuard],
+	},
+	{
+		path: 'capture-setup',
+		component: CaptureSetupPage,
 		canActivate: [authGuard],
 	},
 	{

@@ -5,6 +5,8 @@
     "setup": "npm.cmd --prefix ng install",
     "start": "npm.cmd --prefix ng start",
     "build": "npm.cmd --prefix ng run build",
-    "test": "npm.cmd --prefix ng test"
+    "test": "npm.cmd --prefix ng test",
+    "helper:setup": "npm.cmd --prefix tools/citrix-capture-helper install",
+    "helper:start": "npm.cmd --prefix tools/citrix-capture-helper start"
   }
 }

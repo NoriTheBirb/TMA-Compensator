@@ -18,6 +18,8 @@ import { isIsoInBrasiliaDay, localDayKey } from '../utils/day';
 import { saoPauloDayKey } from '../utils/tz';
 import { quotaWeightForItem } from '../utils/assistant';
 import { CloudSyncService } from '../services/cloud-sync.service';
+import { AppConfigService } from '../services/app-config.service';
+import { ProfileService } from '../services/profile.service';
 
 export const BALANCE_MARGIN_SECONDS = 600;
 
@@ -27,6 +29,8 @@ export const DAILY_QUOTA = 17;
 
 const TIME_TRACKER_TYPE = 'time_tracker';
 const TIME_TRACKER_INVOLUNTARY_IDLE_ITEM = 'Ociosidade involuntaria';
+const WORKDAY_START_ITEM = 'Início do dia';
+const WORKDAY_END_ITEM = 'Fim do dia';
 const TIME_TRACKER_ITEMS = [
   'Pausa',
   'Almoço',
@@ -42,11 +46,29 @@ const TIME_TRACKER_ITEMS = [
 export class AppStateService {
   // Time Tracker: if no activity is registered for 6 minutes, auto-start an "Ociosidade involuntaria" timer.
   // It runs until the user records any other action/transaction.
-  readonly timeTrackerModeEnabled = signal<boolean>(false);
+  readonly timeTrackerModeEnabled = signal<boolean>(true);
   private inactivityTickerId: number | null = null;
   private lastRegisteredAtMs: number = Date.now();
   private lastInvoluntaryIdleWarnAtMs: number = 0;
   private readonly involuntaryIdleKey = this.actionKey(TIME_TRACKER_INVOLUNTARY_IDLE_ITEM, TIME_TRACKER_TYPE);
+
+  // Citrix OCR (from localhost helper): keep last value briefly so Flow-mode finalize can attach it.
+  private pendingCitrixFields: { sgss?: string; tipoEmpresa?: string; capturedAtMs: number } | null = null;
+
+  setPendingCitrixFields(fields: { sgss?: string; tipoEmpresa?: string } | null): void {
+    if (!fields) {
+      this.pendingCitrixFields = null;
+      return;
+    }
+
+    const sgss = String(fields.sgss || '').trim();
+    const tipoEmpresa = String(fields.tipoEmpresa || '').trim();
+    this.pendingCitrixFields = {
+      sgss: sgss || undefined,
+      tipoEmpresa: tipoEmpresa || undefined,
+      capturedAtMs: Date.now(),
+    };
+  }
 
   private readonly validFlowKeys = new Set([
     ...DEFAULT_ACCOUNT_CATALOG.flatMap(g => (g.actions || []).map(a => this.actionKey((a as any).item, (a as any).type))),
@@ -72,6 +94,8 @@ export class AppStateService {
   readonly flowModeEnabled = signal<boolean>(false);
   readonly analytics = signal<AnalyticsState | null>(null);
 
+  readonly sprintModeEnabled = signal<boolean>(false);
+
   readonly lunchStyleEnabled = signal<boolean>(true);
 
   readonly debugTimeSeconds = signal<number | null>(null);
@@ -82,6 +106,9 @@ export class AppStateService {
   readonly pausedWork = signal<PausedWorkStore>({});
   readonly activeFlowTimer = signal<ActiveFlowTimerPersisted | null>(null);
   readonly flowNowMs = signal<number>(Date.now());
+
+  private presenceHeartbeatTimer: number | null = null;
+  private lastPresenceSig = '';
 
   readonly withinBalanceMargin = computed(() => Math.abs(this.balanceSeconds()) <= BALANCE_MARGIN_SECONDS);
   readonly shiftEndSeconds = computed(() => this.shiftStartSeconds() + SHIFT_TOTAL_SECONDS);
@@ -109,14 +136,74 @@ export class AppStateService {
 
   readonly lunchModeEnabled = computed(() => Boolean((this.lunchStyleEnabled() && this.isLunchNow()) || this.manualLunchActive()));
 
+  readonly workDayState = computed<'not_started' | 'started' | 'ended'>(() => {
+    const tx = this.transactionsToday() || [];
+    let bestMs = -1;
+    let best: 'not_started' | 'started' | 'ended' = 'not_started';
+    for (const t of tx) {
+      const type = String((t as any)?.type || '').trim().toLowerCase();
+      if (type !== TIME_TRACKER_TYPE) continue;
+      const item = String((t as any)?.item || '').trim();
+      if (item !== WORKDAY_START_ITEM && item !== WORKDAY_END_ITEM) continue;
+
+      const iso = String((t as any)?.createdAtIso || '').trim() || String((t as any)?.timestamp || '').trim();
+      const ms = Date.parse(iso);
+      if (!Number.isFinite(ms)) continue;
+      if (ms > bestMs) {
+        bestMs = ms;
+        best = item === WORKDAY_END_ITEM ? 'ended' : 'started';
+      }
+    }
+    return best;
+  });
+
+  readonly workDayActive = computed(() => this.workDayState() === 'started');
+
+  readonly workLockReason = computed<string | null>(() => {
+    // Admins are not locked.
+    if (this.profileService?.isAdmin()) return null;
+
+    // If onboarding is required, keep it unlocked (the app already blocks most actions visually).
+    if (this.needsOnboarding()) return null;
+
+    const now = this.nowSeconds();
+    const start = this.shiftStartSeconds();
+    const end = this.shiftEndSeconds();
+
+    if (now < start) return 'Fora do horário: antes do turno.';
+    if (now >= end) return 'Fora do horário: turno encerrado.';
+
+    const state = this.workDayState();
+    if (state === 'not_started') return 'Dia não iniciado. Clique em “Iniciar Dia”.';
+    if (state === 'ended') return 'Dia já finalizado.';
+    return null;
+  });
+
+  readonly canStartNewActionsNow = computed(() => this.workLockReason() === null);
+
   readonly statusLabel = computed(() => {
     const now = this.nowSeconds();
     const start = this.shiftStartSeconds();
     const end = this.shiftEndSeconds();
     if (now < start) return 'Antes do turno';
     if (now >= end) return 'Turno encerrado';
+
+    // Manual workday gating (non-admin only). Admins keep legacy status semantics.
+    if (!this.profileService?.isAdmin()) {
+      const wd = this.workDayState();
+      if (wd === 'not_started') return 'Dia não iniciado';
+      if (wd === 'ended') return 'Dia finalizado';
+    }
+
     if (this.lunchModeEnabled()) return 'Em almoço';
     return 'Trabalhando';
+  });
+
+  readonly workDayButtonLabel = computed(() => {
+    const s = this.workDayState();
+    if (s === 'not_started') return 'Iniciar Dia';
+    if (s === 'started') return 'Finalizar Dia';
+    return 'Dia finalizado';
   });
 
   readonly turnoNowClock = computed(() => secondsToClockHHMM(this.nowSeconds()));
@@ -329,6 +416,61 @@ export class AppStateService {
   ) {
     this.reloadFromStorage();
     this.startClock();
+
+    effect(() => {
+      const cfg = this.appConfig;
+      if (!cfg) {
+        this.sprintModeEnabled.set(false);
+        this.applyBodyClasses();
+        return;
+      }
+      this.sprintModeEnabled.set(Boolean(cfg.sprintModeEnabled()));
+      this.applyBodyClasses();
+    });
+
+    // Best-effort: sync a lightweight "presence" row so Admin can see who's in progress.
+    effect(() => {
+      const t = this.activeFlowTimer();
+      const sig = t
+        ? `${String(t.key || '')}|${Number(t.start) || 0}|${Math.floor(Number(t.baseSeconds) || 0)}|${String(t.item || '')}|${String(t.type || '')}|${Math.floor(Number((t as any)?.tma) || 0)}`
+        : 'none';
+
+      if (sig !== this.lastPresenceSig) {
+        this.lastPresenceSig = sig;
+        try {
+          void this.cloud?.upsertPresenceFromState(t);
+        } catch {
+          // ignore
+        }
+      }
+
+      if (t && this.presenceHeartbeatTimer === null) {
+        this.presenceHeartbeatTimer = window.setInterval(() => {
+          try {
+            void this.cloud?.upsertPresenceFromState(this.activeFlowTimer());
+          } catch {
+            // ignore
+          }
+        }, 45_000);
+      }
+
+      if (!t && this.presenceHeartbeatTimer !== null) {
+        try {
+          window.clearInterval(this.presenceHeartbeatTimer);
+        } catch {
+          // ignore
+        }
+        this.presenceHeartbeatTimer = null;
+      }
+    });
+  }
+
+  private get appConfig(): AppConfigService | null {
+    try {
+      return this.injector.get(AppConfigService);
+    } catch {
+      return null;
+    }
   }
 
   private isTxInDay(tx: LegacyTransaction, dayKey: string): boolean {
@@ -372,6 +514,65 @@ export class AppStateService {
 
   private cloudEnabled(): boolean {
     return Boolean(this.cloud && !this.cloud.isApplyingRemote());
+  }
+
+  private get profileService(): ProfileService | null {
+    try {
+      return this.injector.get(ProfileService);
+    } catch {
+      return null;
+    }
+  }
+
+  private withinShiftWindow(nowSeconds: number): boolean {
+    const now = Number(nowSeconds);
+    const start = Number(this.shiftStartSeconds());
+    const end = Number(this.shiftEndSeconds());
+    if (!Number.isFinite(now) || !Number.isFinite(start) || !Number.isFinite(end)) return false;
+    return now >= start && now < end;
+  }
+
+  toggleWorkDay(): { ok: boolean; action?: 'started' | 'ended'; reason?: string } {
+    // Admins can always toggle.
+    const isAdmin = Boolean(this.profileService?.isAdmin());
+
+    const current = this.workDayState();
+    const nowSeconds = this.nowSeconds();
+
+    if (current === 'ended') {
+      return { ok: false, reason: 'Dia já está finalizado.' };
+    }
+
+    if (current === 'not_started') {
+      if (!isAdmin && !this.withinShiftWindow(nowSeconds)) {
+        return { ok: false, reason: 'Fora do horário de trabalho. Você só pode iniciar o dia durante o turno.' };
+      }
+
+      this.addTransaction({
+        item: WORKDAY_START_ITEM,
+        type: TIME_TRACKER_TYPE,
+        tma: 0,
+        timeSpent: 0,
+        timestamp: new Date().toISOString(),
+        source: 'workday',
+        assistant: null,
+      });
+      this.logEvent('workday_started', {});
+      return { ok: true, action: 'started' };
+    }
+
+    // started -> end
+    this.addTransaction({
+      item: WORKDAY_END_ITEM,
+      type: TIME_TRACKER_TYPE,
+      tma: 0,
+      timeSpent: 0,
+      timestamp: new Date().toISOString(),
+      source: 'workday',
+      assistant: null,
+    });
+    this.logEvent('workday_ended', {});
+    return { ok: true, action: 'ended' };
   }
 
   reloadFromStorage(): void {
@@ -496,6 +697,9 @@ export class AppStateService {
   private tickInvoluntaryIdle(): void {
     if (!this.timeTrackerModeEnabled()) return;
     if (this.onboardingOpen()) return;
+
+    // Respect manual workday lock (non-admin). Do not start idle before the day is started.
+    if (!this.profileService?.isAdmin() && !this.workDayActive()) return;
 
     // Only track during the configured shift window.
     const now = this.nowSeconds();
@@ -766,6 +970,25 @@ export class AppStateService {
     autoStopAtMs?: number;
     markActivity?: boolean;
   }): void {
+    // Work-hours lock: block starting new actions for non-admins.
+    const keyForDisable = input.key || this.actionKey(input.item, input.type);
+    const activeKey = this.activeFlowKey();
+    if (!this.profileService?.isAdmin()) {
+      // Allow stopping the currently active one (handled elsewhere); here we only block starting.
+      if (activeKey !== keyForDisable) {
+        const reason = this.workLockReason();
+        if (reason) {
+          this.logEvent('work_locked_start_blocked', { reason, key: keyForDisable });
+          try {
+            window.dispatchEvent(new CustomEvent('work_lock', { detail: { reason } }));
+          } catch {
+            // ignore
+          }
+          return;
+        }
+      }
+    }
+
     const key = input.key || this.actionKey(input.item, input.type);
 
     const existing = this.activeFlowTimer();
@@ -811,7 +1034,11 @@ export class AppStateService {
     this.logEvent('flow_timer_started', { key, item: payload.item, type: payload.type, baseSeconds: payload.baseSeconds });
   }
 
-  stopFlowTimerForKey(key: string, finalize: boolean): { item: string; type: string; tma: number; totalSeconds: number } | null {
+  stopFlowTimerForKey(
+    key: string,
+    finalize: boolean,
+    opts?: { finishStatus?: 'concluida' | 'encerrada' | string },
+  ): { item: string; type: string; tma: number; totalSeconds: number } | null {
     const t = this.activeFlowTimer();
     if (!t || String(t.key || '') !== String(key || '')) return null;
     const elapsed = Math.floor((Date.now() - Number(t.start)) / 1000);
@@ -833,6 +1060,7 @@ export class AppStateService {
         type: type as any,
         tma,
         timeSpent: total,
+        finishStatus: opts?.finishStatus,
         timestamp: new Date().toISOString(),
         source: 'flow',
         assistant: null,
@@ -847,57 +1075,8 @@ export class AppStateService {
   }
 
   downloadEndDayExport(): void {
-    this.bumpCounter('endDayExport');
-    this.logEvent('end_day_export', {});
-    const exportDateIso = new Date().toISOString();
-    const currentSeconds = this.nowSeconds();
-    const doneTransactions = (this.transactions() || []).length;
-
-    const payload = {
-      exportSchemaVersion: 3,
-      exportDate: exportDateIso,
-      app: {
-        name: 'TMA Compensator',
-        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
-        language: typeof navigator !== 'undefined' ? navigator.language : null,
-      },
-      settings: {
-        balanceMarginSeconds: BALANCE_MARGIN_SECONDS,
-        shiftStartSeconds: this.shiftStartSeconds(),
-        shiftEndSeconds: this.shiftEndSeconds(),
-        lunchStartSeconds: this.lunchStartSeconds(),
-        lunchEndSeconds: this.lunchEndSeconds(),
-        showComplexa: this.showComplexa(),
-        darkThemeEnabled: this.darkThemeEnabled(),
-        flowMode: this.flowModeEnabled(),
-      },
-      snapshot: {
-        now: {
-          currentSeconds,
-          currentClock: secondsToClockHHMM(currentSeconds),
-        },
-        balance: {
-          seconds: this.balanceSeconds(),
-          withinMargin: Math.abs(this.balanceSeconds()) <= BALANCE_MARGIN_SECONDS,
-          marginSeconds: BALANCE_MARGIN_SECONDS,
-        },
-        quota: {
-          doneTransactions,
-        },
-      },
-      transactions: this.transactions(),
-    };
-
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    try {
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `TMA_Compensator_${exportDateIso.split('T')[0]}.json`;
-      a.click();
-    } finally {
-      URL.revokeObjectURL(url);
-    }
+    // JSON export removed (no longer needed).
+    return;
   }
 
   configureOnboarding(
@@ -1002,6 +1181,43 @@ export class AppStateService {
     // If the auto-idle timer is running and the user records something, end the idle state first.
     this.ensureInvoluntaryIdleStopped();
 
+    // Work-hours lock: block manual inserts for non-admins (Flow finalize is allowed).
+    if (!this.profileService?.isAdmin()) {
+      const source = String((tx as any)?.source || '').trim().toLowerCase();
+      const type = String((tx as any)?.type || '').trim().toLowerCase();
+      const item = String((tx as any)?.item || '').trim();
+
+      const isWorkdayMarker = type === TIME_TRACKER_TYPE && (item === WORKDAY_START_ITEM || item === WORKDAY_END_ITEM);
+      const isFlowFinalize = source === 'flow';
+
+      if (!isFlowFinalize && !isWorkdayMarker) {
+        const reason = this.workLockReason();
+        if (reason) {
+          this.logEvent('work_locked_tx_blocked', { reason, source, type, item });
+          try {
+            window.dispatchEvent(new CustomEvent('work_lock', { detail: { reason } }));
+          } catch {
+            // ignore
+          }
+          return;
+        }
+      }
+
+      if (isWorkdayMarker) {
+        const now = this.nowSeconds();
+        if (item === WORKDAY_START_ITEM) {
+          if (!this.withinShiftWindow(now)) {
+            return;
+          }
+        } else if (item === WORKDAY_END_ITEM) {
+          // Allow ending even slightly after shift end.
+          if (this.workDayState() !== 'started') {
+            return;
+          }
+        }
+      }
+    }
+
     this.touchRegisteredNow();
 
     const isTimeTracker = String((tx as any)?.type || '') === TIME_TRACKER_TYPE;
@@ -1013,12 +1229,31 @@ export class AppStateService {
 
     const dayKey = saoPauloDayKey(createdAtIso);
 
+    const type = String((tx as any)?.type || '');
+    const isAccount = type === 'conferencia' || type === 'retorno';
+    const existingSgss = String((tx as any)?.sgss || '').trim();
+    const existingTipo = String((tx as any)?.tipoEmpresa || '').trim();
+    let sgss = existingSgss || undefined;
+    let tipoEmpresa = existingTipo || undefined;
+
+    if (isAccount && (!sgss || !tipoEmpresa) && this.pendingCitrixFields) {
+      const ageMs = Date.now() - Number(this.pendingCitrixFields.capturedAtMs || 0);
+      if (Number.isFinite(ageMs) && ageMs >= 0 && ageMs <= 2 * 60 * 1000) {
+        sgss = sgss || this.pendingCitrixFields.sgss;
+        tipoEmpresa = tipoEmpresa || this.pendingCitrixFields.tipoEmpresa;
+      }
+      // One-shot: never apply to later actions.
+      this.pendingCitrixFields = null;
+    }
+
     const nextTx: LegacyTransaction = {
       ...tx,
       createdAtIso,
       dayKey: dayKey || undefined,
       difference,
       creditedMinutes,
+      sgss,
+      tipoEmpresa,
     };
 
     // Optimistic local insert.
@@ -1555,6 +1790,7 @@ export class AppStateService {
       body.classList.toggle('dark-theme', Boolean(this.darkThemeEnabled()));
       body.classList.toggle('lunch-mode', Boolean(this.lunchModeEnabled()));
       body.classList.toggle('flow-mode', Boolean(this.flowModeEnabled()));
+      body.classList.toggle('sprint-mode', Boolean(this.sprintModeEnabled()));
 
       // Note: we intentionally do NOT use the legacy `welcome-lock` behavior here.
       // It can result in a blank screen if the modal is momentarily hidden.

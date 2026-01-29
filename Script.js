@@ -2532,12 +2532,7 @@ if (sidebarOpenOnboardingBtn) {
     });
 }
 
-if (sidebarExportBtn) {
-    sidebarExportBtn.addEventListener('click', () => {
-        setSidebarOpen(false);
-        if (typeof endWorkDay === 'function') endWorkDay();
-    });
-}
+// JSON export removed.
 
 
 
@@ -2585,109 +2580,7 @@ function resetAll() {
 }
 
 
-    // Finaliza dia de trabalho e exporta dados como JSON
-function endWorkDay() {
-    ensureAnalytics();
-    analytics.counters.endDayExport += 1;
-    logEvent('end_day_export', {});
-
-    const exportDateIso = new Date().toISOString();
-    const { realSeconds, currentSeconds } = getCurrentSeconds();
-    const shift = getShiftInfo(currentSeconds);
-    const remainingWorkSeconds = getRemainingWorkSeconds(currentSeconds);
-    const elapsedWorkSeconds = getElapsedWorkSeconds(currentSeconds);
-    const totalWorkSeconds = getTotalWorkSeconds();
-
-    const perTypeStats = computePerTypeStats();
-    const perTypeStatsExport = Array.from(perTypeStats.entries()).map(([key, s]) => ({
-        key,
-        count: s.count,
-        avgDiffSeconds: s.avgDiff,
-        avgAbsDiffSeconds: s.avgAbsDiff,
-    }));
-
-    const doneTransactions = Array.isArray(transactions) ? transactions.length : 0;
-    const doneQuotaUnits = countQuotaUnits(transactions);
-    const remainingAccounts = Math.max(DAILY_QUOTA - doneQuotaUnits, 0);
-    const withinMargin = Math.abs(Number(timeBalance) || 0) <= BALANCE_MARGIN_SECONDS;
-
-    const exportData = {
-        exportSchemaVersion: 3,
-        exportDate: exportDateIso,
-        app: {
-            name: 'TMA Compensator',
-            userAgent: (typeof navigator !== 'undefined' ? navigator.userAgent : null),
-            language: (typeof navigator !== 'undefined' ? navigator.language : null),
-        },
-        settings: {
-            dailyQuota: DAILY_QUOTA,
-            balanceMarginSeconds: BALANCE_MARGIN_SECONDS,
-            shiftStartSeconds: getShiftStartSeconds(),
-            shiftEndSeconds: getShiftEndSeconds(),
-            lunchStartSeconds: lunchStart,
-            lunchEndSeconds: lunchEnd,
-            lunchStyleEnabled,
-            showComplexa,
-            assistantGuideMode,
-            darkThemeEnabled,
-        },
-        snapshot: {
-            now: {
-                currentSeconds,
-                currentClock: secondsToClockHHMM(currentSeconds),
-                realSeconds,
-            },
-            shift: {
-                shiftStartSeconds: shift.shiftStart,
-                shiftEndSeconds: shift.shiftEnd,
-                remainingShiftSeconds: shift.remainingShiftSeconds,
-                remainingWorkSeconds,
-                elapsedWorkSeconds,
-                totalWorkSeconds,
-            },
-            quota: {
-                done: doneQuotaUnits,
-                doneTransactions,
-                target: DAILY_QUOTA,
-                remaining: remainingAccounts,
-            },
-            balance: {
-                seconds: Number(timeBalance) || 0,
-                formatted: secondsToTime(timeBalance),
-                withinMargin,
-                marginSeconds: BALANCE_MARGIN_SECONDS,
-            },
-            modes: {
-                flowMode,
-                lunchModeActive: Boolean(lunchStart && lunchEnd && currentSeconds >= lunchStart && currentSeconds < lunchEnd),
-                debugTimeActive: debugTime !== null,
-            },
-        },
-        derivedStats: {
-            perType: perTypeStatsExport,
-        },
-        assistantAnalytics: analytics,
-        transactionCount: doneTransactions,
-        quotaUnitsCount: doneQuotaUnits,
-        transactions: transactions,
-    };
-    
-    const dataStr = JSON.stringify(exportData, null, 2);
-    const dataBlob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(dataBlob);
-    const link = document.createElement('a');
-    link.href = url;
-
-    // Nome do arquivo com data
-    const dateStr = new Date().toISOString().split('T')[0];
-    link.download = `TMA_Compensator_${dateStr}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-}
-
-if (endDayBtn) endDayBtn.addEventListener('click', endWorkDay);
+// JSON export removed.
 
 // Eventos do modal de almoço
 if (closeLunchModalBtn) closeLunchModalBtn.addEventListener('click', () => {

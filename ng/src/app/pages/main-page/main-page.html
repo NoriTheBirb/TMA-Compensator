@@ -18,6 +18,11 @@
 				</div>
 			</ng-container>
 
+			<div *ngIf="state.sprintModeEnabled()" class="quota-chip" aria-label="Sprint Mode">
+				<span class="quota-chip-k">Modo:</span>
+				<span class="quota-chip-v">Sprint</span>
+			</div>
+
 			<div *ngIf="profile.timeTrackerEnabled()" class="quota-chip quota-chip--tt" aria-label="Time Tracker">
 				<span class="quota-chip-k">Modo:</span>
 				<span class="quota-chip-v">Time Tracker</span>
@@ -48,44 +53,77 @@
 	<div class="top-row">
 		<div class="time-row">
 			<div class="time-balance">
-				<div class="balance-display">
-					<span class="balance-label">Saldo de Tempo</span>
-					<span
-						class="balance-value"
-						id="balance"
-						[class.neutral]="state.withinBalanceMargin()"
-						[class.positive]="!state.withinBalanceMargin() && state.balanceSeconds() > 0"
-						[class.negative]="!state.withinBalanceMargin() && state.balanceSeconds() < 0"
-					>
-						{{ balanceText() }}
+				<div class="hero-head">
+					<div class="hero-title">Saldo de Tempo</div>
+					<span *ngIf="!state.sprintModeEnabled()" class="hero-pill" [class.ok]="state.withinBalanceMargin()" [class.warn]="!state.withinBalanceMargin()">
+						{{ state.withinBalanceMargin() ? 'Dentro da margem' : 'Fora da margem' }}
 					</span>
-					<div class="muted" style="margin-top:6px; font-size: 0.92em;">Horas trabalhadas: {{ secondsToTime(workedSecondsToday()) }}</div>
+					<span *ngIf="state.sprintModeEnabled()" class="hero-pill muted">Sprint Mode</span>
+				</div>
+
+				<div class="hero-value-row">
+					<ng-container *ngIf="!state.sprintModeEnabled(); else sprintBalanceHidden">
+						<span
+							class="balance-value"
+							id="balance"
+							[class.neutral]="state.withinBalanceMargin()"
+							[class.positive]="!state.withinBalanceMargin() && state.balanceSeconds() > 0"
+							[class.negative]="!state.withinBalanceMargin() && state.balanceSeconds() < 0"
+						>
+							{{ balanceText() }}
+						</span>
+					</ng-container>
+					<ng-template #sprintBalanceHidden>
+						<span class="balance-value neutral" id="balance">—</span>
+					</ng-template>
+				</div>
+
+				<div class="hero-meta">
+					<span class="tx-chip">Trabalhadas: {{ secondsToTime(workedSecondsToday()) }}</span>
+					<ng-container *ngIf="state.assistantKpis() as k">
+						<span class="tx-chip tx-chip--muted">Feitas: {{ k.doneUnits }}/{{ k.dailyQuota }}</span>
+						<span class="tx-chip" [class.guide-chip--ok]="k.quotaDelta >= 0" [class.guide-chip--warn]="k.quotaDelta < 0">
+							{{ k.quotaDelta >= 0 ? 'Adiantado' : 'Atrasado' }} ({{ k.quotaDelta >= 0 ? '+' : '' }}{{ k.quotaDelta }})
+						</span>
+					</ng-container>
+				</div>
+
+				<div class="hero-progress" aria-label="Progresso do trabalho">
+					<div
+						class="hero-progress-bar"
+						[style.width.%]="state.totalWorkSeconds() > 0 ? (state.elapsedWorkSeconds() / state.totalWorkSeconds()) * 100 : 0"
+					></div>
 				</div>
 				<div class="balance-actions">
-					<button id="endDayBtn" class="btn-end-day btn-primary-pill" type="button" (click)="exportEndDay()">Finalizar Dia</button>
+					<button
+						id="endDayBtn"
+						class="btn-end-day btn-primary-pill"
+						type="button"
+						(click)="toggleWorkDayFromMainButton()"
+					>
+						{{ state.workDayButtonLabel() }}
+					</button>
 				</div>
 			</div>
 
 			<div class="current-time">
-				<div class="time-display">
-					<div class="card-head">
-						<span class="time-label">Turno Atual</span>
-						<button
-							type="button"
-							class="btn-mini-pill"
-							(click)="endWorkDayFromTurnoBox()"
-							title="Encerrar / exportar fim do dia"
-						>
-							Encerrar dia
-						</button>
-						<span class="time-value" id="currentTime">{{ state.turnoAtualHHMM() }}</span>
-					</div>
-					<div class="turno-details" aria-label="Detalhes do turno">
-						<div class="turno-line"><span class="turno-k">Agora</span><span class="turno-v" id="turnoNow">{{ state.turnoNowClock() }}</span></div>
-						<div class="turno-line"><span class="turno-k">Fim</span><span class="turno-v" id="turnoEnd">{{ state.turnoEndClock() }}</span></div>
-						<div class="turno-line"><span class="turno-k">Trabalho restante</span><span class="turno-v" id="turnoWorkLeft">{{ state.turnoWorkLeftHuman() }}</span></div>
-						<div class="turno-line"><span class="turno-k">Status</span><span class="turno-v" id="turnoStatus">{{ state.statusLabel() }}</span></div>
-					</div>
+				<div class="hero-head">
+					<div class="hero-title">Turno Atual</div>
+					<span class="time-value" id="currentTime">{{ state.turnoAtualHHMM() }}</span>
+				</div>
+
+				<div class="hero-progress" aria-label="Progresso do turno">
+					<div
+						class="hero-progress-bar"
+						[style.width.%]="state.totalWorkSeconds() > 0 ? (state.elapsedWorkSeconds() / state.totalWorkSeconds()) * 100 : 0"
+					></div>
+				</div>
+
+				<div class="hero-kv" aria-label="Detalhes do turno">
+					<div class="hero-kv-row"><span class="hero-k">Agora</span><span class="hero-v" id="turnoNow">{{ state.turnoNowClock() }}</span></div>
+					<div class="hero-kv-row"><span class="hero-k">Fim</span><span class="hero-v" id="turnoEnd">{{ state.turnoEndClock() }}</span></div>
+					<div class="hero-kv-row"><span class="hero-k">Trabalho restante</span><span class="hero-v" id="turnoWorkLeft">{{ state.turnoWorkLeftHuman() }}</span></div>
+					<div class="hero-kv-row" [ngClass]="statusToneClass(state.statusLabel())"><span class="hero-k">Status</span><span class="hero-v" id="turnoStatus">{{ state.statusLabel() }}</span></div>
 				</div>
 			</div>
 		</div>
@@ -95,7 +133,10 @@
 					<div class="guide-head">
 						<div>
 							<div class="guide-title">Guia de contas</div>
-							<div class="guide-sub">Meta até agora: <strong>{{ k.expectedDoneNow }}</strong>/<strong>{{ k.dailyQuota }}</strong></div>
+							<div class="guide-sub">
+								Meta até agora: <strong>{{ k.expectedDoneNow }}</strong>/<strong>{{ k.dailyQuota }}</strong>
+								<span class="muted" style="font-weight: 800;"> • feitas: <strong>{{ k.doneUnits }}</strong></span>
+							</div>
 						</div>
 						<div class="guide-need" *ngIf="k.dayPart.key !== 'post' && k.remainingUnits > 0">
 							<div class="guide-need-k">Ritmo necessário</div>
@@ -114,23 +155,16 @@
 						<div class="guide-progress-bar" [style.width.%]="k.dailyQuota > 0 ? (k.doneUnits / k.dailyQuota) * 100 : 0"></div>
 					</div>
 
-					<div class="guide-kpis">
-						<div class="mini-kpi">
-							<div class="mini-k">Tempo restante</div>
-							<div class="mini-v">{{ k.remainingWorkText }}</div>
-						</div>
-						<div class="mini-kpi">
-							<div class="mini-k">Saldo</div>
-							<div class="mini-v" [class.ok]="k.withinMarginNow" [class.warn]="!k.withinMarginNow">{{ k.balanceText }}</div>
-						</div>
-						<div class="mini-kpi">
-							<div class="mini-k">Status</div>
-							<div class="mini-v" [class.ok]="k.quotaDelta >= 0" [class.warn]="k.quotaDelta < 0">{{ k.quotaDelta >= 0 ? 'adiantado' : 'atrasado' }} ({{ k.quotaDelta >= 0 ? '+' : '' }}{{ k.quotaDelta }})</div>
-						</div>
-						<div class="mini-kpi">
-							<div class="mini-k">TMA médio</div>
-							<div class="mini-v">{{ secondsToTime(k.avgTimeSpentSeconds) }}</div>
-						</div>
+
+					<div class="guide-chips" aria-label="Resumo">
+						<span class="tx-chip">Restante: {{ k.remainingWorkText }}</span>
+						<span class="tx-chip" [class.guide-chip--ok]="k.quotaDelta >= 0" [class.guide-chip--warn]="k.quotaDelta < 0">
+							Status: {{ k.quotaDelta >= 0 ? 'adiantado' : 'atrasado' }} ({{ k.quotaDelta >= 0 ? '+' : '' }}{{ k.quotaDelta }})
+						</span>
+						<span class="tx-chip tx-chip--muted">Ritmo: {{ k.currentPacePerHourText }}</span>
+						<span class="tx-chip" *ngIf="!state.sprintModeEnabled()" [class.guide-chip--ok]="k.withinMarginNow" [class.guide-chip--warn]="!k.withinMarginNow">
+							Saldo: {{ k.balanceText }}
+						</span>
 					</div>
 
 					<details class="guide-details" [open]="assistantDetailsOpen()" (toggle)="onAssistantDetailsToggle($event)">
@@ -140,8 +174,8 @@
 							<div class="kpi"><span>Seu ritmo</span><span class="value">{{ k.currentPacePerHourText }}</span></div>
 							<div class="kpi"><span>Tempo por conta</span><span class="value">{{ secondsToTime(k.budgetPerAccountSeconds) }}</span></div>
 							<div class="muted">Transações registradas: <strong>{{ k.doneTx }}</strong>.</div>
-							<div class="muted">Faixa ok (±10m no fim): {{ signed(k.avgDiffMin) }} a {{ signed(k.avgDiffMax) }}.</div>
-							<div class="muted">Se continuar na mesma média ({{ signed(k.avgDiffSoFar) }} por conta), termina em <span [class.ok]="k.predictedOk" [class.warn]="!k.predictedOk">{{ signed(k.predictedEnd) }}</span>.</div>
+								<div class="muted" *ngIf="!state.sprintModeEnabled()">Faixa ok (±10m no fim): {{ signed(k.avgDiffMin) }} a {{ signed(k.avgDiffMax) }}.</div>
+								<div class="muted" *ngIf="!state.sprintModeEnabled()">Se continuar na mesma média ({{ signed(k.avgDiffSoFar) }} por conta), termina em <span [class.ok]="k.predictedOk" [class.warn]="!k.predictedOk">{{ signed(k.predictedEnd) }}</span>.</div>
 						</div>
 					</details>
 				</ng-container>
@@ -261,30 +295,35 @@
 
 		<div class="control-grid" *ngIf="!profile.timeTrackerEnabled() || mainTab() === 'accounts'">
 			<div class="control-box" *ngFor="let acct of visibleAccounts()">
-				<div class="box-content">
-					<h3>{{ acct.name }}</h3>
-					<div class="timer-display">{{ state.timerTextForAccount(acct.name) }}</div>
-					<ng-container *ngIf="state.flowModeEnabled(); else legacyTmaList">
-						<div class="tma-row" aria-label="TMAs do tipo de conta">
-							<span class="tma-pill" *ngFor="let a of acct.actions">
-								{{ typeLabel(a.type) }} • {{ secondsToTime(a.tmaSeconds) }}
-							</span>
-						</div>
-					</ng-container>
-					<ng-template #legacyTmaList>
-						<p *ngFor="let a of acct.actions">{{ typeLabel(a.type) }}: {{ secondsToTime(a.tmaSeconds) }}</p>
-					</ng-template>
+				<div class="acct-head">
+					<div class="acct-title">
+						<h3 class="acct-name">{{ acct.name }}</h3>
+					</div>
+					<div class="acct-timer" aria-label="Tempo atual">{{ state.timerTextForAccount(acct.name) }}</div>
 				</div>
-				<div class="box-actions">
+
+				<div class="acct-actions" aria-label="Ações">
 					<button
-						class="btn-action"
+						class="btn-action acct-action"
 						[type]="'button'"
 						*ngFor="let a of acct.actions"
 						[disabled]="isActionDisabled(a)"
 						[ngClass]="actionButtonClass(a)"
 						(click)="clickAction(a)"
 					>
-						{{ actionButtonLabel(a) }}
+						<div class="acct-action-main">
+							<span class="acct-action-label">{{ actionButtonLabel(a) }}</span>
+							<span class="tx-badge" [ngClass]="txTypeBadgeClass(a.type)">{{ typeLabel(a.type) }}</span>
+						</div>
+						<div class="acct-action-meta">
+							<span class="acct-action-meta-item" *ngIf="!state.sprintModeEnabled()">TMA: {{ secondsToTime(a.tmaSeconds) }}</span>
+							<span
+								class="acct-action-meta-item"
+								*ngIf="state.getPausedCountForKey(state.actionKey(a.item, a.type)) > 0"
+							>
+								Pausados: {{ state.getPausedCountForKey(state.actionKey(a.item, a.type)) }}
+							</span>
+						</div>
 					</button>
 				</div>
 			</div>
@@ -292,22 +331,28 @@
 
 		<div class="control-grid" *ngIf="profile.timeTrackerEnabled() && mainTab() === 'timeTracker'">
 			<div class="control-box" *ngFor="let opt of timeTrackerOptions()">
-				<div class="box-content">
-					<h3>{{ opt.name }}</h3>
-					<div class="timer-display">{{ state.timerTextForAccount(opt.name) }}</div>
-					<p class="muted" style="margin: 10px 0 0; font-weight: 700;">
-						{{ opt.name === 'Almoço' ? 'Auto para sozinho em 1h' : 'Flow obrigatório' }}
-					</p>
+				<div class="acct-head">
+					<div class="acct-title">
+						<h3 class="acct-name">{{ opt.name }}</h3>
+						<span class="tx-badge tx-badge--tt">Time Tracker</span>
+					</div>
+					<div class="acct-timer" aria-label="Tempo atual">{{ state.timerTextForAccount(opt.name) }}</div>
 				</div>
-				<div class="box-actions">
+
+				<div class="acct-actions" aria-label="Ações">
 					<button
-						class="btn-action"
+						class="btn-action acct-action acct-action--single"
 						[type]="'button'"
 						[disabled]="isActionDisabled(opt.action)"
 						[ngClass]="actionButtonClass(opt.action)"
 						(click)="clickAction(opt.action)"
 					>
-						{{ actionButtonLabel(opt.action) }}
+						<div class="acct-action-main">
+							<span class="acct-action-label">{{ actionButtonLabel(opt.action) }}</span>
+						</div>
+						<div class="acct-action-meta">
+							<span class="acct-action-meta-item">{{ opt.name === 'Almoço' ? 'Auto para sozinho em 1h' : 'Flow obrigatório' }}</span>
+						</div>
 					</button>
 				</div>
 			</div>
@@ -317,10 +362,11 @@
 	<div class="modal" id="timeModal" [class.active]="modalOpen()">
 		<div class="modal-content" *ngIf="modalAction() as a">
 			<div class="modal-header">
-				<h2 id="modalTitle">{{ typeLabel(a.type) }}</h2>
+				<h2 id="modalTitle">{{ a.item }}</h2>
 				<button class="close-modal" type="button" aria-label="Fechar" (click)="closeModal()">&times;</button>
 			</div>
 			<div class="modal-body">
+				<div class="muted" style="font-weight:800; margin: -6px 0 12px;">{{ typeLabel(a.type) }}</div>
 				<label>Tempo gasto (HH:MM:SS)</label>
 				<input
 					type="text"
@@ -333,7 +379,7 @@
 					placeholder="00:30:00"
 				/>
 				<div class="info-text" id="infoText">
-					TMA: {{ secondsToTime(a.tmaSeconds) }}
+					<ng-container *ngIf="!state.sprintModeEnabled()">TMA: {{ secondsToTime(a.tmaSeconds) }}</ng-container>
 					<span *ngIf="resumePausedContext() as ctx">
 						 • Pausado: {{ secondsToTime(state.getPausedEntryById(ctx.key, ctx.entryId)?.accumulatedSeconds || 0) }} (digite o tempo adicional)
 					</span>
@@ -342,11 +388,39 @@
 						(último: {{ secondsToTime(state.getPausedSecondsForKey(state.actionKey(a.item, a.type))) }} )
 					</span>
 				</div>
+
+				<div class="citrix-panel" *ngIf="a.type === 'conferencia' || a.type === 'retorno'">
+					<div class="citrix-title">Citrix (SGSS / Tipo Empresa)</div>
+
+					<div class="citrix-muted" *ngIf="!citrixConfigured()">
+						Não configurado. Use <a href="/capture-setup" (click)="goToCaptureSetup($event)">Configurar Captura (Citrix)</a>.
+					</div>
+
+					<div class="citrix-muted" *ngIf="citrixConfigured() && citrixExtracting()">Lendo tela…</div>
+					<div class="citrix-error" *ngIf="citrixError()">{{ citrixError() }}</div>
+
+					<div class="citrix-grid" *ngIf="citrixSgss() || citrixTipoEmpresa()">
+						<div class="citrix-field">
+							<div class="citrix-label">SGSS</div>
+							<div class="citrix-value">{{ citrixSgss() || '—' }}</div>
+						</div>
+						<div class="citrix-field">
+							<div class="citrix-label">Tipo Empresa</div>
+							<div class="citrix-value">{{ citrixTipoEmpresa() || '—' }}</div>
+						</div>
+					</div>
+
+					<div class="citrix-actions" *ngIf="citrixConfigured()">
+						<button class="citrix-btn" type="button" (click)="recaptureCitrix()" [disabled]="citrixExtracting()">Re-capturar</button>
+						<button class="citrix-btn" type="button" (click)="copyCitrixResults()" [disabled]="!(citrixSgss() || citrixTipoEmpresa())">Copiar</button>
+					</div>
+				</div>
 			</div>
 			<div class="modal-actions">
 				<button class="btn-cancel" type="button" (click)="closeModal()">Cancelar</button>
 				<button class="btn-paralyze" type="button" (click)="paralyzeFromModal()">Paralisar</button>
-				<button class="btn-confirm" type="button" (click)="confirmModal()">Confirmar</button>
+				<button class="btn-close" type="button" (click)="confirmModal('encerrada')">Encerrar</button>
+				<button class="btn-confirm" type="button" (click)="confirmModal('concluida')">Concluir</button>
 			</div>
 		</div>
 	</div>
@@ -356,7 +430,8 @@
 		<div class="history-item" *ngFor="let p of state.pausedEntriesSorted()">
 			<div class="history-info">
 				<h4>{{ p.item }} - {{ typeLabel(p.type) }}</h4>
-				<p>Pausado: {{ secondsToTime(p.accumulatedSeconds) }} • TMA: {{ secondsToTime(p.tma) }}</p>
+				<p *ngIf="!state.sprintModeEnabled()">Pausado: {{ secondsToTime(p.accumulatedSeconds) }} • TMA: {{ secondsToTime(p.tma) }}</p>
+				<p *ngIf="state.sprintModeEnabled()">Pausado: {{ secondsToTime(p.accumulatedSeconds) }}</p>
 			</div>
 			<div class="history-actions">
 				<button class="sidebar-action" type="button" style="min-width: 120px;" (click)="resumePaused(p)">Retomar</button>
@@ -369,12 +444,66 @@
 		<div *ngIf="visibleHistoryTransactions().length === 0" class="muted" style="padding: 12px;">Nenhuma transação ainda.</div>
 
 		<div class="history-item" *ngFor="let t of visibleHistoryTransactions()">
-			<div class="history-info">
-				<h4>{{ t.item }} - {{ typeLabel(t.type) }}</h4>
-				<p>Gasto: {{ secondsToTime(t.timeSpent) }} • TMA: {{ secondsToTime(t.tma) }} • {{ whenText(t) }}</p>
+			<div class="history-info tx-main">
+				<div class="tx-title">
+					<div class="tx-item">
+						<span class="tx-item-name">{{ t.item }}</span>
+						<span class="tx-badge" [ngClass]="txTypeBadgeClass(t.type)">{{ typeLabel(t.type) }}</span>
+						<span *ngIf="t.finishStatus" class="tx-badge tx-badge--status">{{ finishStatusLabel(t.finishStatus) }}</span>
+					</div>
+					<div class="tx-when" title="{{ whenText(t) }}">{{ txTimeRangeLabel(t) }}</div>
+				</div>
+
+				<div class="tx-sub">
+					<span class="tx-sub-k">Gasto</span>
+					<span class="tx-sub-v">{{ secondsToTime(t.timeSpent) }}</span>
+					<span *ngIf="!state.sprintModeEnabled()" class="tx-sub-sep">•</span>
+					<span *ngIf="!state.sprintModeEnabled()" class="tx-sub-k">TMA</span>
+					<span *ngIf="!state.sprintModeEnabled()" class="tx-sub-v">{{ secondsToTime(t.tma) }}</span>
+				</div>
+
+				<div class="tx-chips" *ngIf="t.sgss || t.tipoEmpresa || t.source">
+					<span class="tx-chip" *ngIf="t.sgss">SGSS: {{ t.sgss }}</span>
+					<span class="tx-chip" *ngIf="t.tipoEmpresa">Tipo: {{ t.tipoEmpresa }}</span>
+					<span class="tx-chip tx-chip--muted" *ngIf="t.source">{{ sourceLabel(t.source) }}</span>
+				</div>
+
+				<details class="tx-details">
+					<summary>Detalhes</summary>
+					<div class="tx-details-grid">
+						<div class="tx-detail">
+							<div class="tx-detail-k">Início</div>
+							<div class="tx-detail-v">{{ txStartDateTimeLabel(t) || '—' }}</div>
+						</div>
+						<div class="tx-detail">
+							<div class="tx-detail-k">Fim</div>
+							<div class="tx-detail-v">{{ txEndDateTimeLabel(t) || '—' }}</div>
+						</div>
+						<div class="tx-detail" *ngIf="!state.sprintModeEnabled()">
+							<div class="tx-detail-k">Diferença</div>
+							<div class="tx-detail-v" [ngClass]="diffClass(t.difference)">{{ signed(t.difference) }}</div>
+						</div>
+						<div class="tx-detail" *ngIf="!state.sprintModeEnabled()">
+							<div class="tx-detail-k">Crédito</div>
+							<div class="tx-detail-v">{{ t.creditedMinutes }} min</div>
+						</div>
+						<div class="tx-detail" *ngIf="t.sgss">
+							<div class="tx-detail-k">SGSS</div>
+							<div class="tx-detail-v">{{ t.sgss }}</div>
+						</div>
+						<div class="tx-detail" *ngIf="t.tipoEmpresa">
+							<div class="tx-detail-k">Tipo Empresa</div>
+							<div class="tx-detail-v">{{ t.tipoEmpresa }}</div>
+						</div>
+						<div class="tx-detail">
+							<div class="tx-detail-k">Source</div>
+							<div class="tx-detail-v">{{ sourceLabel(t.source) }}</div>
+						</div>
+					</div>
+				</details>
 			</div>
 			<div class="history-actions">
-				<div class="history-time" [ngClass]="diffClass(t.difference)">
+				<div class="history-time" *ngIf="!state.sprintModeEnabled()" [ngClass]="diffClass(t.difference)">
 					{{ t.difference >= 0 ? '+' : '' }}{{ secondsToTime(t.difference) }}
 					<div style="font-size:0.8em;color:#666">({{ t.difference >= 0 ? '+' : '-' }}{{ t.creditedMinutes }} min)</div>
 				</div>
@@ -396,6 +525,7 @@
 			<div class="modal-actions">
 				<button class="flow-choice-cancel" type="button" (click)="chooseFlowChoice('cancel')">{{ flowChoiceCancelLabel() }}</button>
 				<button class="flow-choice-paralyze" type="button" (click)="chooseFlowChoice('paralyze')">{{ flowChoiceParalyzeLabel() }}</button>
+				<button *ngIf="flowChoiceCloseLabel()" class="flow-choice-close" type="button" (click)="chooseFlowChoice('close')">{{ flowChoiceCloseLabel() }}</button>
 				<button class="flow-choice-finalize" type="button" (click)="chooseFlowChoice('finalize')">{{ flowChoiceFinalizeLabel() }}</button>
 			</div>
 		</div>
@@ -523,27 +653,12 @@
 		<div>
 			<div class="sidebar-title">Ajustes</div>
 			<div class="sidebar-greeting" *ngIf="helloName()">Oi, <span class="sidebar-greeting-name">{{ helloName() }}</span></div>
-			<div class="sidebar-mode-pill" *ngIf="profile.timeTrackerEnabled()">Time Tracker</div>
 		</div>
 			<button id="sidebarCloseBtn" class="sidebar-close" type="button" aria-label="Fechar menu" (click)="closeSidebar()">&times;</button>
 	</div>
 	<div class="sidebar-body">
 		<div class="sidebar-section">
 			<div class="sidebar-section-title">Modos</div>
-
-			<div class="sidebar-row">
-				<span>{{ profile.timeTrackerEnabled() ? 'Flow (obrigatório)' : 'Flow' }}</span>
-				<label class="switch" style="margin-bottom:0;">
-						<input
-							type="checkbox"
-							id="sidebarFlowToggle"
-							[checked]="profile.timeTrackerEnabled() ? true : state.flowModeEnabled()"
-							[disabled]="profile.timeTrackerEnabled()"
-							(change)="toggleFlowMode($any($event.target).checked)"
-						>
-					<span class="slider"></span>
-				</label>
-			</div>
 
 			<div class="sidebar-row">
 				<span>Tema escuro</span>
@@ -577,57 +692,76 @@
 					<span class="slider"></span>
 				</label>
 			</div>
-
-			<button class="sidebar-action" type="button" (click)="companion.showHelp()" [disabled]="companion.hidden()">O que eu faço?</button>
-			<button class="sidebar-action" type="button" (click)="companion.showTip()" [disabled]="companion.hidden()">Dica rápida</button>
-			<button class="sidebar-action" type="button" (click)="companion.showMotivation()" [disabled]="companion.hidden()">Motivação</button>
-			<button class="sidebar-action" type="button" (click)="companion.showShortcuts()" [disabled]="companion.hidden()">Atalhos</button>
-			<button class="sidebar-action" type="button" (click)="companion.showTimeTrackerInfo()" [disabled]="companion.hidden()">Time Tracker</button>
-
-		</div>
-
-		<div class="sidebar-section">
-			<div class="sidebar-section-title">Modo time tracker</div>
-
-			<div class="sidebar-tt-status" *ngIf="profile.timeTrackerEnabled()">
-				Ativado
-			</div>
-
-			<div class="sidebar-tt-row" *ngIf="!profile.timeTrackerEnabled()">
-				<input
-					class="sidebar-tt-input"
-					type="password"
-					placeholder="Código especial"
-					[ngModel]="timeTrackerCodeInput()"
-					(ngModelChange)="timeTrackerCodeInput.set($event)"
-					[disabled]="timeTrackerSaving()"
-				/>
-				<button class="sidebar-action" type="button" (click)="submitTimeTrackerCode()" [disabled]="timeTrackerSaving()">
-					{{ timeTrackerSaving() ? 'Validando…' : 'Ativar' }}
-				</button>
-			</div>
-
-			<button
-				*ngIf="profile.timeTrackerEnabled()"
-				class="sidebar-action sidebar-action--danger"
-				type="button"
-				(click)="disableTimeTrackerMode()"
-				[disabled]="timeTrackerSaving()"
-			>
-				Desativar
-			</button>
-
-			<div class="sidebar-tt-msg ok" *ngIf="timeTrackerSuccess()">{{ timeTrackerSuccess() }}</div>
-			<div class="sidebar-tt-msg err" *ngIf="timeTrackerError()">{{ timeTrackerError() }}</div>
 		</div>
 
 		<div class="sidebar-section">
 			<div class="sidebar-section-title">Ações</div>
 				<button id="sidebarOpenOnboardingBtn" class="sidebar-action" type="button" (click)="openOnboardingFromSettings()">Configurar turno / almoço</button>
-				<button id="sidebarExportBtn" class="sidebar-action" type="button" (click)="exportEndDay()">Finalizar dia (Exportar)</button>
+				<button class="sidebar-action" type="button" (click)="openCorrectionRequest()">Solicitar correção (Admin)</button>
+				<a class="sidebar-action" href="/capture-setup" (click)="goToCaptureSetup($event)" style="text-decoration:none; display:block; text-align:center;" title="Configurar captura do Citrix">Configurar Captura (Citrix)</a>
 				<a class="sidebar-action" href="/report" (click)="goToReport($event)" style="text-decoration:none; display:block; text-align:center;" title="Abrir relatório">Ir para Relatório</a>
 				<a *ngIf="profile.isAdmin()" class="sidebar-action" href="/admin" (click)="goToAdmin($event)" style="text-decoration:none; display:block; text-align:center;" title="Abrir painel admin">Painel (Admin)</a>
 				<button id="sidebarLogoutBtn" class="sidebar-action sidebar-action--danger" type="button" (click)="logout()">Sair</button>
 		</div>
 	</div>
 </aside>
+
+<div
+	class="corr-modal-overlay"
+	*ngIf="correctionOpen()"
+	(click)="closeCorrectionRequest()"
+	role="dialog"
+	aria-modal="true"
+	aria-label="Solicitar correção"
+>
+	<div class="corr-modal" (click)="$event.stopPropagation()">
+		<div class="corr-head">
+			<div>
+				<div class="corr-title">Solicitar correção (Admin)</div>
+				<div class="corr-sub">Selecione a conta e explique exatamente o que deve mudar.</div>
+			</div>
+			<button class="corr-close" type="button" (click)="closeCorrectionRequest()">✕</button>
+		</div>
+
+		<div class="corr-body">
+			<div class="corr-error" *ngIf="correctionError()">{{ correctionError() }}</div>
+
+			<label class="corr-field">
+				<span class="corr-label">Conta</span>
+				<select
+					class="corr-input"
+					[ngModel]="correctionSelectedTxId()"
+					(ngModelChange)="correctionSelectedTxId.set($event)"
+				>
+					<option *ngIf="requestableTransactions().length === 0" [ngValue]="''">Sem contas hoje</option>
+					<option *ngFor="let t of requestableTransactions()" [ngValue]="$any(t).id">
+						{{ $any(t).item }} • {{ $any(t).type }} • {{ secondsToTime($any(t).timeSpent) }}
+					</option>
+				</select>
+			</label>
+
+			<label class="corr-field">
+				<span class="corr-label">O que aconteceu / como corrigir</span>
+				<textarea
+					class="corr-input"
+					rows="6"
+					placeholder="Ex: Registrei como Retorno mas era Conferência. Também errei o tempo: era 00:18:30 e finalizei como Encerrada."
+					[ngModel]="correctionMessage()"
+					(ngModelChange)="correctionMessage.set($event)"
+				></textarea>
+			</label>
+		</div>
+
+		<div class="corr-actions">
+			<button class="sidebar-action" type="button" (click)="closeCorrectionRequest()" [disabled]="correctionSending()">Cancelar</button>
+			<button
+				class="sidebar-action"
+				type="button"
+				(click)="submitCorrectionRequest()"
+				[disabled]="correctionSending() || !correctionMessage().trim() || !correctionSelectedTxId().trim()"
+			>
+				{{ correctionSending() ? 'Enviando…' : 'Enviar solicitação' }}
+			</button>
+		</div>
+	</div>
+</div>

@@ -1344,21 +1344,7 @@
         if (dayparts) dayparts.addEventListener('keydown', keyHandler);
     }
 
-    function downloadJson(filename, obj) {
-        const dataStr = JSON.stringify(obj, null, 2);
-        const blob = new Blob([dataStr], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    }
-
-    function init() {
-        wireExplainableCards();
+    // JSON import/export removed.
 
         function renderFromDataset(dataset, meta) {
             const dark = Boolean(dataset?.darkThemeEnabled);
@@ -1634,21 +1620,6 @@
             });
         }
 
-        const exportBtn = el('reportExportBtn');
-        if (exportBtn) {
-            exportBtn.addEventListener('click', () => {
-                const today = new Date().toISOString().split('T')[0];
-                downloadJson(`TMA_Compensator_${today}.json`, {
-                    exportedAtIso: new Date().toISOString(),
-                    balanceSeconds: currentDataset?.balanceSeconds,
-                    transactions: currentDataset?.transactions,
-                    lunch: currentDataset?.lunch,
-                    shiftStartSeconds: currentDataset?.shiftStartSeconds,
-                    showComplexa: currentDataset?.showComplexa,
-                    pausedWork: currentDataset?.pausedWork,
-                });
-            });
-        }
 
         const themeBtn = el('reportToggleThemeBtn');
         if (themeBtn) {
@@ -1668,38 +1639,7 @@
             });
         }
 
-        const importInput = el('reportImportInput');
-        if (importInput) {
-            importInput.addEventListener('change', async (e) => {
-                const input = e.target;
-                const file = input && input.files ? input.files[0] : null;
-                if (!file) return;
-
-                try {
-                    const text = await file.text();
-                    const parsed = JSON.parse(text);
-
-                    const dataset = {
-                        darkThemeEnabled: document.body.classList.contains('dark-theme'),
-                        balanceSeconds: Number(parsed?.balanceSeconds) || 0,
-                        transactions: Array.isArray(parsed?.transactions) ? parsed.transactions : [],
-                        lunch: parsed?.lunch || null,
-                        shiftStartSeconds: Number(parsed?.shiftStartSeconds) || 0,
-                        showComplexa: Boolean(parsed?.showComplexa),
-                        pausedWork: parsed?.pausedWork || {},
-                    };
-
-                    // Preview apenas: nunca sobrescreve os dados ao vivo.
-                    fileMeta = { source: 'file', fileName: file.name };
-                    fileDataset = dataset;
-                    setViewMode('file');
-                } catch (err) {
-                    alert('Não consegui importar esse JSON. Verifique se ele foi exportado pelo TMA Compensator.');
-                } finally {
-                    try { input.value = ''; } catch { /* ignora */ }
-                }
-            });
-        }
+        // Import removed.
 
         // Atualização ao vivo: polling + storage events + BroadcastChannel
         window.addEventListener('resize', () => renderView(true));

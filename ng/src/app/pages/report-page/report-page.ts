@@ -16,6 +16,7 @@ import { RouterLink } from '@angular/router';
 import { AppStateService } from '../../core/state/app-state.service';
 import { quotaWeightForItem } from '../../core/utils/assistant';
 import { formatSignedTime } from '../../core/utils/time';
+import { saoPauloDayKey } from '../../core/utils/tz';
 import {
   buildAdviceHtml,
   buildBarList,
@@ -24,9 +25,9 @@ import {
   computeTxStats,
   drawBalanceLineChart,
   drawDiffHistogram,
-  escapeHtml,
   modalBodyToHtml,
   normalizePausedWorkStore,
+  parseTxDate,
   secondsToTime,
   type ReportDataset,
   renderAwardsAndDaypartsHtml,
@@ -46,9 +47,6 @@ export class ReportPage implements AfterViewInit, OnDestroy {
   private chartRedrawTimer: number | null = null;
   private resizeHandler: (() => void) | null = null;
 
-  protected readonly viewMode = signal<'live' | 'file'>('live');
-  protected readonly fileName = signal<string>('');
-  protected readonly fileDataset = signal<ReportDataset | null>(null);
   protected readonly lastUpdatedAtIso = signal<string>(new Date().toISOString());
 
   protected readonly showLockedAchievements = signal<boolean>(false);
@@ -66,6 +64,14 @@ export class ReportPage implements AfterViewInit, OnDestroy {
     showComplexa: false,
     pausedWork: {},
   });
+
+  // YYYY-MM-DD in São Paulo calendar.
+  protected readonly selectedDayKey = signal<string>('');
+  protected readonly isLiveDay = computed(() => {
+    const selected = String(this.selectedDayKey() || '').trim();
+    const active = String(this.state.activeDayKey() || '').trim();
+    return Boolean(selected && active && selected === active);
+  });
   protected readonly flowNowMs = signal<number>(Date.now());
   protected readonly canvasesReady = signal<boolean>(false);
 
@@ -75,52 +81,93 @@ export class ReportPage implements AfterViewInit, OnDestroy {
   ) {
     // TS/JS class-field initializers run before constructor parameter properties are assigned.
     // So we must not call this.state in a field initializer.
-    this.liveDataset.set(this.readLiveDatasetFromState());
+    this.selectedDayKey.set(String(this.state.activeDayKey() || saoPauloDayKey(new Date())));
+    this.liveDataset.set(this.readDatasetForDay(this.selectedDayKey()));
 
     effect(() => {
       // Keep the report in sync with the same in-memory state that is cloud-backed.
-      this.liveDataset.set(this.readLiveDatasetFromState());
+      const dayKey = this.selectedDayKey();
+      // Touch relevant signals so this effect reacts.
+      this.state.transactions();
+      this.state.darkThemeEnabled();
+      this.state.showComplexa();
+      this.state.lunchStartSeconds();
+      this.state.lunchEndSeconds();
+      this.state.shiftStartSeconds();
+      this.state.activeDayKey();
+      this.state.pausedWork();
+
+      this.liveDataset.set(this.readDatasetForDay(dayKey));
       this.lastUpdatedAtIso.set(new Date().toISOString());
     });
   }
 
-  private readLiveDatasetFromState(): ReportDataset {
+  private isTxInDayKey(t: any, dayKey: string): boolean {
+    const key = String(dayKey || '').trim();
+    if (!key) return false;
+
+    const txDayKey = String((t as any)?.dayKey || '').trim();
+    if (txDayKey) return txDayKey === key;
+
+    const raw = String((t as any)?.createdAtIso || (t as any)?.timestamp || '').trim();
+    const dt = parseTxDate(raw);
+    if (!dt) return false;
+    return saoPauloDayKey(dt) === key;
+  }
+
+  private readDatasetForDay(dayKey: string): ReportDataset {
     const lunchStart = this.state.lunchStartSeconds();
     const lunchEnd = this.state.lunchEndSeconds();
 
+    // Report can show today or historical days.
+    // Always ignore Time Tracker entries for all report charts/KPIs.
+    const all = (this.state.transactions() as any[]) || [];
+    const key = String(dayKey || '').trim();
+    const transactions = (Array.isArray(all) ? all : [])
+      .filter((t) => this.isTxInDayKey(t, key))
+      .filter((t) => String((t as any)?.type || '').trim().toLowerCase() !== 'time_tracker');
+
+    const balanceSeconds = transactions.reduce((acc, t) => acc + (Number((t as any)?.difference) || 0), 0);
+
     return {
       darkThemeEnabled: this.state.darkThemeEnabled(),
-      balanceSeconds: this.state.balanceSeconds(),
-      transactions: this.state.transactions(),
+      balanceSeconds,
+      transactions,
       lunch: lunchStart !== null && lunchEnd !== null ? { start: lunchStart, end: lunchEnd } : null,
       shiftStartSeconds: this.state.shiftStartSeconds(),
       showComplexa: this.state.showComplexa(),
-      pausedWork: this.state.pausedWork(),
+      pausedWork: this.isLiveDay() ? this.state.pausedWork() : {},
     };
   }
 
-  protected readonly dataset = computed<ReportDataset>(() => {
-    if (this.viewMode() === 'file') return this.fileDataset() ?? this.liveDataset();
-    return this.liveDataset();
-  });
+  protected readonly dataset = computed<ReportDataset>(() => this.liveDataset());
 
   protected readonly datasetHintHtml = computed(() => {
     const updatedAt = new Date(this.lastUpdatedAtIso()).toLocaleTimeString();
-    if (this.viewMode() === 'file') {
-      const name = this.fileName() || 'arquivo';
-      return `
-        <span class="report-pill warn">Preview</span>
-        <span style="margin-left:8px;">Arquivo: <b>${escapeHtml(name)}</b></span>
-        <button type="button" class="sidebar-action" data-view-live style="margin-left:10px; width:auto; padding:10px 12px;">Voltar ao vivo</button>
-      `;
-    }
-
+    const key = String(this.selectedDayKey() || '').trim();
+    const todayKey = String(this.state.activeDayKey() || '').trim();
+    const isToday = Boolean(key && todayKey && key === todayKey);
     return `
-      <span class="report-pill good">Ao vivo</span>
-      <span style="margin-left:8px;">Dados atuais (sincronizados)</span>
-      <span class="report-muted" style="margin-left:8px;">Atualizado: ${updatedAt}</span>
+      <span class="report-pill ${isToday ? 'good' : ''}">${isToday ? 'Ao vivo' : 'Histórico'}</span>
+      <span style="margin-left:8px;">Dia: <b>${key || '—'}</b></span>
+      <span class="report-muted" style="margin-left:8px;">${isToday ? `Atualizado: ${updatedAt}` : 'Fechado (sem atualização ao vivo)'}</span>
     `;
   });
+
+  protected setReportDayKey(raw: string): void {
+    const next = String(raw || '').trim();
+    if (!next) return;
+    this.selectedDayKey.set(next);
+  }
+
+  protected setToday(): void {
+    this.setReportDayKey(String(this.state.activeDayKey() || saoPauloDayKey(new Date())));
+  }
+
+  protected setYesterday(): void {
+    const ms = Date.now() - 24 * 60 * 60 * 1000;
+    this.setReportDayKey(saoPauloDayKey(new Date(ms)));
+  }
 
   protected readonly balanceText = computed(() => formatSignedTime(this.dataset().balanceSeconds));
   protected readonly txStats = computed(() => computeTxStats(this.dataset().transactions));
@@ -241,15 +288,6 @@ export class ReportPage implements AfterViewInit, OnDestroy {
     if (this.resizeHandler) window.removeEventListener('resize', this.resizeHandler);
   }
 
-  protected onDatasetHintClick(ev: MouseEvent): void {
-    const target = ev.target as HTMLElement | null;
-    const btn = target?.closest?.('[data-view-live]') as HTMLElement | null;
-    if (!btn) return;
-    ev.preventDefault();
-    ev.stopPropagation();
-    this.viewMode.set('live');
-  }
-
   protected onAwardsClick(ev: MouseEvent): void {
     const rawTarget: any = ev.target as any;
     const target = (rawTarget && rawTarget.nodeType === 3) ? rawTarget.parentElement : rawTarget;
@@ -296,62 +334,6 @@ export class ReportPage implements AfterViewInit, OnDestroy {
 
   protected toggleTheme(): void {
     this.state.setDarkThemeEnabled(!document.body.classList.contains('dark-theme'));
-  }
-
-  protected exportJson(): void {
-    const ds = this.dataset();
-    const today = new Date().toISOString().split('T')[0];
-    const payload = {
-      exportedAtIso: new Date().toISOString(),
-      balanceSeconds: ds.balanceSeconds,
-      transactions: ds.transactions,
-      lunch: ds.lunch,
-      shiftStartSeconds: ds.shiftStartSeconds,
-      showComplexa: ds.showComplexa,
-      pausedWork: ds.pausedWork,
-    };
-
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    try {
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `TMA_Compensator_${today}.json`;
-      a.click();
-    } finally {
-      URL.revokeObjectURL(url);
-    }
-  }
-
-  protected async importJsonFile(input: HTMLInputElement): Promise<void> {
-    const file = input.files?.[0] ?? null;
-    if (!file) return;
-
-    try {
-      const text = await file.text();
-      const parsed = JSON.parse(text);
-      const dataset: ReportDataset = {
-        darkThemeEnabled: document.body.classList.contains('dark-theme'),
-        balanceSeconds: Number(parsed?.balanceSeconds) || 0,
-        transactions: Array.isArray(parsed?.transactions) ? parsed.transactions : [],
-        lunch: parsed?.lunch || null,
-        shiftStartSeconds: Number(parsed?.shiftStartSeconds) || 0,
-        showComplexa: Boolean(parsed?.showComplexa),
-        pausedWork: parsed?.pausedWork || {},
-      };
-
-      this.fileName.set(file.name);
-      this.fileDataset.set(dataset);
-      this.viewMode.set('file');
-    } catch {
-      alert('Não consegui importar esse JSON. Verifique se ele foi exportado pelo TMA Compensator.');
-    } finally {
-      try {
-        input.value = '';
-      } catch {
-        // ignore
-      }
-    }
   }
 }
 

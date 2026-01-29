@@ -5,17 +5,21 @@
 			<div class="report-sub">Resumo do dia + gráficos. Diferença = Gasto - TMA (0 é perfeito; negativo = abaixo do TMA; positivo = acima). Meta do dia: 17 contas. Saldo bom: perto de 00:00:00.</div>
 		</div>
 		<div class="report-actions">
+			<button class="sidebar-action" type="button" (click)="setToday()">Hoje</button>
+			<button class="sidebar-action" type="button" (click)="setYesterday()">Ontem</button>
+			<input
+				class="report-date"
+				type="date"
+				[value]="selectedDayKey()"
+				(change)="setReportDayKey(($any($event.target).value))"
+				aria-label="Selecionar dia do relatório"
+			/>
 			<a routerLink="/" class="sidebar-action" style="text-decoration:none;">← Voltar</a>
 			<button id="reportToggleThemeBtn" class="sidebar-action" type="button" (click)="toggleTheme()">Alternar tema</button>
-			<label class="sidebar-action" style="cursor:pointer;">
-				Importar JSON
-				<input id="reportImportInput" #importInput type="file" accept="application/json,.json" style="display:none;" (change)="importJsonFile(importInput)" />
-			</label>
-			<button id="reportExportBtn" class="sidebar-action" type="button" (click)="exportJson()">Exportar JSON</button>
 		</div>
 	</header>
 
-	<div id="reportDatasetHint" class="report-muted" style="margin: 0 0 10px;" [innerHTML]="datasetHintHtml()" (click)="onDatasetHintClick($event)"></div>
+	<div id="reportDatasetHint" class="report-muted" style="margin: 0 0 10px;" [innerHTML]="datasetHintHtml()"></div>
 
 	<section class="report-grid">
 		<div class="report-card">

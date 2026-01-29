@@ -2,6 +2,7 @@ import { Injectable, Injector, effect, signal } from '@angular/core';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 import type { LegacyTransaction } from '../models/transaction';
+import type { ActiveFlowTimerPersisted } from '../models/paused-work';
 import { AppStateService } from '../state/app-state.service';
 import { AuthService } from './auth.service';
 import { CompanionService } from './companion.service';
@@ -15,10 +16,24 @@ type DbTransactionRow = {
   type: string;
   tma: number;
   time_spent: number;
+  sgss: string | null;
+  tipo_empresa: string | null;
+  finish_status: string | null;
   source: string | null;
   client_timestamp: string | null;
   assistant: any | null;
   created_at: string;
+};
+
+type DbPresenceRow = {
+  user_id: string;
+  active_key: string | null;
+  active_item: string | null;
+  active_type: string | null;
+  active_started_at: string | null;
+  active_base_seconds: number | null;
+  active_tma: number | null;
+  updated_at: string;
 };
 
 type DbSettingsRow = {
@@ -321,6 +336,9 @@ export class CloudSyncService {
           type: String(tx.type),
           tma: Math.max(0, Math.floor(Number(tx.tma) || 0)),
           time_spent: Math.max(0, Math.floor(Number(tx.timeSpent) || 0)),
+          sgss: String((tx as any)?.sgss || '') || null,
+          tipo_empresa: String((tx as any)?.tipoEmpresa || '') || null,
+          finish_status: String((tx as any)?.finishStatus || '') || null,
           source: String(tx.source || ''),
           // IMPORTANT: DB column is timestamptz; do not send empty/invalid strings.
           client_timestamp: clientTimestampIso,
@@ -358,6 +376,39 @@ export class CloudSyncService {
 
     const { error } = await this.sb.supabase.from('transactions').delete().eq('id', id).eq('user_id', userId);
     if (error) throw error;
+  }
+
+  /**
+   * Best-effort presence row so Admin can see "conta em progresso".
+   * Not critical to core functionality.
+   */
+  async upsertPresenceFromState(active: ActiveFlowTimerPersisted | null): Promise<void> {
+    const userId = this.auth.userId();
+    if (!userId) return;
+    if (!this.sb.ready()) return;
+
+    const nowIso = new Date().toISOString();
+    const startedAtIso = active ? new Date(Number(active.start) || Date.now()).toISOString() : null;
+
+    const row: DbPresenceRow = {
+      user_id: userId,
+      active_key: active ? String(active.key || '') || null : null,
+      active_item: active ? String(active.item || '') || null : null,
+      active_type: active ? String(active.type || '') || null : null,
+      active_started_at: startedAtIso,
+      active_base_seconds: active ? Math.max(0, Math.floor(Number(active.baseSeconds) || 0)) : null,
+      active_tma: active ? Math.max(0, Math.floor(Number((active as any)?.tma) || 0)) : null,
+      updated_at: nowIso,
+    };
+
+    try {
+      const { error } = await this.sb.supabase.from('user_presence').upsert(row, { onConflict: 'user_id' });
+      if (error) throw error;
+    } catch (e) {
+      // Non-fatal; keep quiet (admin view will just not show in-progress).
+      // eslint-disable-next-line no-console
+      console.warn('[CloudSync] presence upsert failed', e);
+    }
   }
 
   private applyRemoteInsert(row: Partial<DbTransactionRow>): void {
@@ -413,6 +464,9 @@ export class CloudSyncService {
       difference,
       creditedMinutes,
       timestamp: String((row as any)?.client_timestamp || ''),
+      sgss: String((row as any)?.sgss || '') || undefined,
+      tipoEmpresa: String((row as any)?.tipo_empresa || '') || undefined,
+      finishStatus: String((row as any)?.finish_status || '') || undefined,
       source: String((row as any)?.source || ''),
       assistant: ((row as any)?.assistant as any) ?? null,
     };

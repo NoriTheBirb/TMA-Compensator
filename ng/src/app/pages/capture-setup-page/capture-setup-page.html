@@ -1,0 +1,102 @@
+<div class="container">
+  <header class="head">
+    <div>
+      <h1 class="title">Configurar Captura Citrix</h1>
+      <div class="sub">Marque na tela onde ficam o SGSS e o Tipo Empresa. Depois, o app consegue capturar e copiar esses textos com 1 clique.</div>
+    </div>
+    <div class="actions">
+      <a routerLink="/" class="btn">← Voltar</a>
+    </div>
+  </header>
+
+  <section class="card">
+    <div class="row">
+      <div>
+        <div class="k">Helper local</div>
+        <div class="v" [class.ok]="helperOk()" [class.err]="!helperOk()">
+          {{ helperOk() ? 'Conectado' : 'Desconectado' }}
+        </div>
+        <div class="muted" *ngIf="!helperOk()">Rode: <b>npm.cmd run helper:start</b> (em um terminal).</div>
+        <div class="errtext" *ngIf="helperError()">{{ helperError() }}</div>
+      </div>
+      <div class="row-actions">
+				<div class="screen-picker">
+					<div class="k">Monitor</div>
+          <select class="select" [value]="selectedScreenIndex()" (change)="setScreenIndex(($any($event.target)).value)">
+            <option *ngIf="(displays() || []).length === 0" [value]="0">Monitor 0</option>
+            <option *ngFor="let d of displays()" [value]="d.index ?? 0">
+              Monitor {{ d.index ?? 0 }}{{ d.width && d.height ? ' — ' + d.width + 'x' + d.height : '' }}
+            </option>
+          </select>
+				</div>
+        <button class="btn" type="button" (click)="checkHelper()" [disabled]="helperChecking()">
+          {{ helperChecking() ? 'Testando…' : 'Testar conexão' }}
+        </button>
+        <button class="btn primary" type="button" (click)="captureNow()">Capturar tela</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" *ngIf="screenshotSrc()">
+    <div class="wizard">
+      <div class="wizard-head">
+        <div class="wizard-title">
+          <ng-container [ngSwitch]="step()">
+            <span *ngSwitchCase="'pick-sgss'">Passo 1 — Marque o <b>SGSS</b></span>
+            <span *ngSwitchCase="'pick-tipo'">Passo 2 — Marque o <b>Tipo Empresa</b> (valor)</span>
+            <span *ngSwitchCase="'test'">Passo 3 — Testar leitura</span>
+            <span *ngSwitchDefault>Captura</span>
+          </ng-container>
+        </div>
+        <div class="wizard-actions">
+          <button class="btn" type="button" (click)="startPickSgss()" [disabled]="!screenshotSrc()">Marcar SGSS</button>
+          <button class="btn" type="button" (click)="startPickTipo()" [disabled]="!screenshotSrc()">Marcar Tipo Empresa</button>
+          <button class="btn danger" type="button" (click)="clearRegions()">Limpar</button>
+        </div>
+      </div>
+
+      <div class="hint" *ngIf="step() === 'pick-sgss' || step() === 'pick-tipo'">
+        Clique e arraste na imagem para selecionar: <b>{{ currentTargetLabel() }}</b>. Quanto mais justo, melhor.
+      </div>
+
+      <div
+        #stageEl
+        class="stage"
+        (pointerdown)="onPointerDown($event)"
+        (pointermove)="onPointerMove($event)"
+        (pointerup)="onPointerUp($event)"
+      >
+        <img #imgEl class="shot" [src]="screenshotSrc()" alt="Screenshot" />
+
+        <!-- existing regions (grey) -->
+        <div class="rect" [ngStyle]="regionStyle(regions()?.sgss || null, 'secondary')" *ngIf="step() !== 'pick-sgss'"></div>
+        <div class="rect" [ngStyle]="regionStyle(regions()?.tipoEmpresa || null, 'secondary')" *ngIf="step() !== 'pick-tipo'"></div>
+
+        <!-- active/draft region (green) -->
+        <div class="rect" [ngStyle]="regionStyle(draftRegion() || null, 'primary')" *ngIf="draftRegion()"></div>
+      </div>
+
+      <div class="test" *ngIf="step() === 'test'">
+        <button class="btn primary" type="button" (click)="testExtract()" [disabled]="extracting()">
+          {{ extracting() ? 'Lendo…' : 'Testar leitura (OCR)' }}
+        </button>
+
+        <div class="out" *ngIf="extractedError()">{{ extractedError() }}</div>
+
+        <div class="grid" *ngIf="extractedSgss() || extractedTipo()">
+          <div class="kv">
+            <div class="k">SGSS</div>
+            <div class="v2">{{ extractedSgss() || '—' }}</div>
+          </div>
+          <div class="kv">
+            <div class="k">Tipo Empresa</div>
+            <div class="v2">{{ extractedTipo() || '—' }}</div>
+          </div>
+        </div>
+
+        <button class="btn" type="button" (click)="copyResults()" [disabled]="!(extractedSgss() || extractedTipo())">Copiar</button>
+        <div class="muted" style="margin-top:8px;">Dica: se vier errado, recapture e marque as caixas mais “coladas” no texto.</div>
+      </div>
+    </div>
+  </section>
+</div>

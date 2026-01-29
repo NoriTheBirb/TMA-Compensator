@@ -470,6 +470,108 @@
 		transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* Correction request modal */
+.corr-modal-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 8000;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 14px;
+	background: rgba(0, 0, 0, 0.55);
+	backdrop-filter: blur(7px);
+	-webkit-backdrop-filter: blur(7px);
+}
+
+.corr-modal {
+	width: min(760px, calc(100vw - 28px));
+	max-height: calc(100vh - 28px);
+	overflow: auto;
+	border-radius: 18px;
+	background: var(--card);
+	border: 1px solid var(--border);
+	box-shadow: 0 28px 90px rgba(0, 0, 0, 0.5);
+}
+
+.corr-head {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 14px;
+	border-bottom: 1px solid color-mix(in oklab, var(--border, rgba(255,255,255,0.15)) 30%, transparent);
+}
+
+.corr-title {
+	font-weight: 980;
+	font-size: 1.05rem;
+}
+
+.corr-sub {
+	margin-top: 4px;
+	color: var(--muted);
+	font-weight: 750;
+}
+
+.corr-close {
+	width: 40px;
+	height: 40px;
+	border-radius: 999px;
+	border: 1px solid var(--border);
+	background: color-mix(in oklab, var(--card) 92%, transparent);
+	color: var(--text);
+	font-weight: 980;
+	font-size: 1.1rem;
+	cursor: pointer;
+}
+
+.corr-body {
+	padding: 14px;
+}
+
+.corr-field {
+	display: grid;
+	gap: 6px;
+	margin-bottom: 12px;
+}
+
+.corr-label {
+	font-weight: 900;
+	color: var(--muted);
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	font-size: 0.62rem;
+}
+
+.corr-input {
+	width: 100%;
+	border-radius: 12px;
+	border: 1px solid var(--border);
+	background: color-mix(in oklab, var(--card) 92%, transparent);
+	color: var(--text);
+	padding: 10px 10px;
+	font-weight: 800;
+}
+
+.corr-error {
+	margin-bottom: 10px;
+	padding: 10px 12px;
+	border-radius: 12px;
+	border: 1px solid color-mix(in oklab, #ef4444 40%, var(--border));
+	background: color-mix(in oklab, #ef4444 12%, var(--card));
+	color: var(--text);
+	font-weight: 800;
+}
+
+.corr-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 10px;
+	padding: 12px 14px 14px;
+	border-top: 1px solid color-mix(in oklab, var(--border, rgba(255,255,255,0.15)) 30%, transparent);
+}
+
 /* Wider, centered layout like the screenshot */
 .container {
 	max-width: 1200px;
@@ -601,6 +703,120 @@
 	padding: 28px;
 	box-shadow: 0 18px 55px rgba(15, 23, 42, 0.08);
 	border: none;
+}
+
+/* Hero layout helpers (Saldo / Turno) */
+.hero-head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 12px;
+}
+
+.hero-title {
+	text-transform: uppercase;
+	letter-spacing: 0.14em;
+	font-size: 0.7rem;
+	font-weight: 900;
+	color: var(--muted);
+}
+
+.hero-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 10px;
+	border-radius: 999px;
+	font-weight: 950;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	font-size: 0.62rem;
+	border: 1px solid color-mix(in oklab, var(--border) 45%, transparent);
+	background: color-mix(in oklab, var(--card) 92%, var(--surface));
+	color: var(--text);
+	white-space: nowrap;
+}
+
+.hero-pill.ok {
+	background: color-mix(in oklab, var(--accent) 14%, var(--card));
+	border-color: color-mix(in oklab, var(--accent) 28%, var(--border));
+}
+
+.hero-pill.warn {
+	background: color-mix(in oklab, var(--bad) 12%, var(--card));
+	border-color: color-mix(in oklab, var(--bad) 24%, var(--border));
+}
+
+.hero-value-row {
+	margin-top: 10px;
+}
+
+.hero-meta {
+	margin-top: 10px;
+	display: flex;
+	gap: 10px;
+	flex-wrap: wrap;
+}
+
+.hero-progress {
+	margin-top: 12px;
+	height: 6px;
+	border-radius: 999px;
+	background: color-mix(in oklab, var(--border) 55%, transparent);
+	overflow: hidden;
+}
+
+.hero-progress-bar {
+	height: 100%;
+	width: 0;
+	background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 75%, #60a5fa), var(--accent));
+	border-radius: 999px;
+}
+
+.hero-kv {
+	margin-top: 12px;
+	display: grid;
+	grid-template-columns: 1fr;
+	gap: 8px;
+}
+
+.hero-kv-row {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 10px;
+	padding: 8px 10px;
+	border-radius: 12px;
+	border: 1px solid color-mix(in oklab, var(--border) 25%, transparent);
+	background: color-mix(in oklab, var(--card) 94%, var(--surface));
+}
+
+.hero-kv-row.tone-ok {
+	background: color-mix(in oklab, var(--accent) 10%, var(--card));
+	border-color: color-mix(in oklab, var(--accent) 25%, var(--border));
+}
+
+.hero-kv-row.tone-warn {
+	background: color-mix(in oklab, var(--bad) 8%, var(--card));
+	border-color: color-mix(in oklab, var(--bad) 18%, var(--border));
+}
+
+.hero-kv-row.tone-tt {
+	background: color-mix(in oklab, #a855f7 10%, var(--card));
+	border-color: color-mix(in oklab, #a855f7 22%, var(--border));
+}
+
+.hero-k {
+	font-size: 0.68rem;
+	font-weight: 950;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: color-mix(in oklab, var(--muted) 80%, transparent);
+}
+
+.hero-v {
+	font-weight: 950;
+	color: var(--text);
 }
 
 .balance-label,
@@ -762,6 +978,28 @@
 	margin-top: 2px;
 }
 
+/* Guide summary: compact chips instead of big KPI tiles */
+.guide-chips {
+	margin-top: 12px;
+	display: flex;
+	gap: 10px;
+	flex-wrap: wrap;
+}
+
+.guide-chips .tx-chip {
+	box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+}
+
+.guide-chip--ok {
+	background: color-mix(in oklab, var(--accent) 14%, var(--card)) !important;
+	border-color: color-mix(in oklab, var(--accent) 28%, var(--border)) !important;
+}
+
+.guide-chip--warn {
+	background: color-mix(in oklab, var(--bad) 12%, var(--card)) !important;
+	border-color: color-mix(in oklab, var(--bad) 24%, var(--border)) !important;
+}
+
 .mini-kpi {
 	background: color-mix(in oklab, var(--card) 92%, var(--surface));
 	border: none;
@@ -915,10 +1153,221 @@
 	background: color-mix(in oklab, var(--card) 92%, var(--surface));
 	color: var(--text);
 	border-radius: 999px;
-	padding: 8px 12px;
+	padding: 10px 14px;
 	font-weight: 950;
+	font-size: 0.88rem;
 	cursor: pointer;
 	box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+	min-width: 116px;
+}
+
+/* .sidebar-action is animated/hidden by default outside an open sidebar.
+   We reuse it in the paused/history lists, so force it visible there. */
+.history .sidebar-action,
+.history .history-delete {
+	opacity: 1 !important;
+	transform: none !important;
+	visibility: visible !important;
+	pointer-events: auto !important;
+}
+
+/* Transactions: more informative but scannable */
+.history-item .tx-main {
+	flex: 1;
+	min-width: 0;
+}
+
+.history-item:has(.tx-main) {
+	align-items: flex-start;
+	gap: 14px;
+}
+
+.tx-title {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 10px;
+}
+
+.tx-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+}
+
+.tx-item-name {
+	font-weight: 950;
+	color: var(--text);
+	font-size: 0.95em;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 520px;
+}
+
+.tx-when {
+	font-size: 0.82em;
+	color: var(--muted);
+	font-weight: 800;
+	white-space: nowrap;
+}
+
+.tx-badge {
+	border-radius: 999px;
+	padding: 4px 10px;
+	font-size: 0.7rem;
+	font-weight: 950;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	border: 1px solid color-mix(in oklab, var(--border) 55%, transparent);
+	background: color-mix(in oklab, var(--card) 90%, var(--surface));
+	color: var(--text);
+	white-space: nowrap;
+}
+
+.tx-badge--acct {
+	background: color-mix(in oklab, #3b82f6 16%, var(--card));
+	border-color: color-mix(in oklab, #3b82f6 32%, var(--border));
+}
+
+.tx-badge--tt {
+	background: color-mix(in oklab, #a855f7 16%, var(--card));
+	border-color: color-mix(in oklab, #a855f7 32%, var(--border));
+}
+
+.tx-badge--status {
+	background: color-mix(in oklab, var(--accent) 14%, var(--card));
+	border-color: color-mix(in oklab, var(--accent) 28%, var(--border));
+}
+
+.tx-sub {
+	margin-top: 6px;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-wrap: wrap;
+	color: var(--muted);
+	font-size: 0.85em;
+}
+
+.tx-sub-k {
+	font-weight: 900;
+	color: color-mix(in oklab, var(--muted) 80%, var(--text));
+}
+
+.tx-sub-v {
+	font-family: 'Courier New', monospace;
+	font-weight: 900;
+	color: var(--text);
+}
+
+.tx-sub-sep {
+	color: color-mix(in oklab, var(--muted) 60%, transparent);
+}
+
+.tx-chips {
+	margin-top: 8px;
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.tx-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 4px 10px;
+	border-radius: 999px;
+	border: 1px solid color-mix(in oklab, var(--border) 45%, transparent);
+	background: color-mix(in oklab, var(--card) 92%, var(--surface));
+	color: var(--text);
+	font-weight: 800;
+	font-size: 0.75rem;
+}
+
+.tx-chip--muted {
+	color: var(--muted);
+}
+
+.tx-details {
+	margin-top: 8px;
+}
+
+.tx-details summary {
+	list-style: none;
+	cursor: pointer;
+	user-select: none;
+	font-weight: 900;
+	font-size: 0.78rem;
+	color: color-mix(in oklab, var(--muted) 80%, var(--text));
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+}
+
+.tx-details summary::-webkit-details-marker {
+	display: none;
+}
+
+.tx-details summary::after {
+	content: '▾';
+	margin-left: 6px;
+	font-size: 0.9rem;
+	color: color-mix(in oklab, var(--muted) 75%, transparent);
+}
+
+.tx-details[open] summary::after {
+	content: '▴';
+}
+
+.tx-details-grid {
+	margin-top: 8px;
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 10px;
+}
+
+.tx-detail {
+	background: color-mix(in oklab, var(--card) 94%, var(--surface));
+	border: 1px solid color-mix(in oklab, var(--border) 25%, transparent);
+	border-radius: 12px;
+	padding: 10px;
+}
+
+.tx-detail-k {
+	font-size: 0.68rem;
+	font-weight: 950;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: color-mix(in oklab, var(--muted) 80%, transparent);
+}
+
+.tx-detail-v {
+	margin-top: 6px;
+	font-weight: 900;
+	color: var(--text);
+	word-break: break-word;
+}
+
+@media (max-width: 980px) {
+	.tx-item-name {
+		max-width: 320px;
+	}
+
+	.tx-details-grid {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+@media (max-width: 560px) {
+	.tx-title {
+		flex-direction: column;
+		align-items: flex-start;
+	}
+
+	.tx-details-grid {
+		grid-template-columns: 1fr;
+	}
 }
 
 .control-tab.active {
@@ -942,7 +1391,7 @@
 
 .control-box {
 	border-radius: 16px;
-	padding: 18px 18px 16px;
+	padding: 14px 14px 12px;
 	box-shadow: 0 18px 55px rgba(15, 23, 42, 0.08);
 	border: none;
 	background: color-mix(in oklab, var(--card) 96%, var(--surface));
@@ -990,6 +1439,111 @@
 	text-transform: uppercase;
 	letter-spacing: 0.06em;
 	box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+}
+
+/* --- Tipos de conta / Time Tracker (new card layout) --- */
+.acct-head {
+	display: grid;
+	grid-template-columns: 1fr;
+	gap: 8px;
+}
+
+.acct-title {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	min-width: 0;
+}
+
+.acct-name {
+	margin: 0;
+	font-size: 15px;
+	line-height: 1.2;
+	font-weight: 800;
+	letter-spacing: -0.2px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.acct-timer {
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+	font-variant-numeric: tabular-nums;
+	font-weight: 950;
+	letter-spacing: -0.3px;
+	font-size: 22px;
+	color: #0f172a;
+	white-space: nowrap;
+	padding: 8px 12px;
+	border-radius: 999px;
+	background: color-mix(in oklab, var(--accent) 14%, var(--card));
+	border: 1px solid color-mix(in oklab, var(--accent) 34%, var(--border));
+	justify-self: start;
+}
+
+.acct-actions {
+	margin-top: 12px;
+	display: grid;
+	gap: 8px;
+}
+
+.btn-action.acct-action {
+	text-align: left;
+	padding: 9px 10px;
+	display: grid;
+	gap: 4px;
+	border-radius: 12px;
+	text-transform: none;
+	letter-spacing: 0;
+	box-shadow: none;
+	border: 1px solid color-mix(in oklab, var(--border) 60%, transparent);
+	background: color-mix(in oklab, var(--card) 94%, var(--surface));
+}
+
+.btn-action.acct-action--single {
+	padding: 12px 12px;
+}
+
+.acct-action-main {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	min-width: 0;
+}
+
+.acct-action-label {
+	font-weight: 900;
+	letter-spacing: -0.2px;
+	font-size: 14px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.acct-action-main .tx-badge {
+	padding: 3px 8px;
+	font-size: 0.62rem;
+	letter-spacing: 0.04em;
+	opacity: 0.95;
+}
+
+.acct-action-meta {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.acct-action-meta-item {
+	font-size: 11.5px;
+	line-height: 1;
+	padding: 5px 9px;
+	border-radius: 999px;
+	background: rgba(15, 23, 42, 0.06);
+	border: 1px solid rgba(15, 23, 42, 0.10);
+	color: #0f172a;
+	font-weight: 800;
 }
 
 .btn-action:hover {
@@ -1074,50 +1628,6 @@
 	color: color-mix(in oklab, var(--accent) 55%, var(--text));
 }
 
-.sidebar-tt-row {
-	display: grid;
-	grid-template-columns: 1fr;
-	gap: 10px;
-}
-
-.sidebar-tt-input {
-	border: 1px solid color-mix(in oklab, var(--border, rgba(255,255,255,0.15)) 55%, transparent);
-	background: color-mix(in oklab, var(--surface) 70%, transparent);
-	padding: 10px 12px;
-	border-radius: 12px;
-	color: inherit;
-	font-weight: 850;
-	outline: none;
-}
-
-.sidebar-tt-input:focus {
-	border-color: color-mix(in oklab, var(--accent) 55%, var(--border, rgba(255,255,255,0.15)));
-}
-
-.sidebar-tt-status {
-	margin-bottom: 10px;
-	color: var(--accent);
-	font-weight: 950;
-}
-
-.sidebar-tt-msg {
-	margin-top: 10px;
-	padding: 10px 12px;
-	border-radius: 12px;
-	font-weight: 850;
-	white-space: pre-line;
-}
-
-.sidebar-tt-msg.ok {
-	background: color-mix(in oklab, rgba(16, 185, 129, 0.16) 75%, transparent);
-	color: color-mix(in oklab, #10b981 75%, #ffffff);
-}
-
-.sidebar-tt-msg.err {
-	background: color-mix(in oklab, rgba(239, 68, 68, 0.16) 75%, transparent);
-	color: color-mix(in oklab, #ef4444 75%, #ffffff);
-}
-
 /* Optional global hook: make Time Tracker mode visually distinct */
 body.time-tracker-mode .brand-icon {
 	filter: saturate(1.25);
@@ -1156,3 +1666,68 @@ body.time-tracker-mode .brand-icon {
 		grid-template-columns: 1fr;
 	}
 }
+
+.citrix-panel {
+	margin-top: 12px;
+	padding: 12px;
+	border-radius: 12px;
+	border: 1px solid var(--border);
+}
+
+.citrix-title {
+	font-weight: 900;
+	margin-bottom: 8px;
+}
+
+.citrix-muted {
+	color: var(--muted);
+	font-size: 0.95em;
+}
+
+.citrix-error {
+	margin-top: 8px;
+	color: #ef4444;
+	font-weight: 700;
+}
+
+.citrix-grid {
+	margin-top: 10px;
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 10px;
+}
+
+.citrix-field {
+	padding: 10px;
+	border-radius: 10px;
+	border: 1px solid var(--border);
+}
+
+.citrix-label {
+	font-size: 0.75rem;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: var(--muted);
+	font-weight: 900;
+}
+
+.citrix-value { margin-top: 6px; font-weight: 800; word-break: break-word; }
+
+.citrix-actions {
+	margin-top: 10px;
+	display: flex;
+	gap: 10px;
+}
+
+.citrix-btn {
+	flex: 1;
+	padding: 10px 12px;
+	border-radius: 10px;
+	border: 1px solid var(--border);
+	background: rgba(255, 255, 255, 0.06);
+	color: var(--text);
+	font-weight: 900;
+	cursor: pointer;
+}
+
+.citrix-btn:disabled { opacity: 0.55; cursor: not-allowed; }

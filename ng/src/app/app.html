@@ -1,24 +1,54 @@
 <router-outlet></router-outlet>
 
-<div class="companion" [class.is-hidden]="companion.hidden()">
+<div
+	class="companion"
+	[class.is-hidden]="companion.hidden()"
+	[style.--companion-scale]="companion.scale()"
+	[style.left.px]="companion.position().x"
+	[style.top.px]="companion.position().y"
+>
 	<button
 		type="button"
 		class="companion-square"
 		aria-label="Abrir Noir"
-		(click)="$event.preventDefault(); $event.stopPropagation(); companion.toggleOpen()"
+		(pointerdown)="onCompanionPointerDown($event)"
+		(click)="onCompanionClick($event)"
 	>
-		<img class="companion-img" [src]="companion.imageUrl()" alt="" />
+		<img class="companion-img" [src]="companion.imageUrl()" alt="" draggable="false" />
 		<span class="companion-badge" *ngIf="companion.unreadBroadcastCount() > 0">{{ companion.unreadBadgeText() }}</span>
 	</button>
 
 	<div class="companion-bubble" [class.is-open]="companion.open()" (click)="$event.stopPropagation()">
 		<div class="companion-bubble-head">
 			<div class="companion-title">{{ companion.title() }}</div>
-			<button type="button" class="companion-close" aria-label="Fechar" (click)="companion.open.set(false)">×</button>
+			<button type="button" class="companion-close" aria-label="Fechar" (click)="companion.close()">×</button>
 		</div>
 		<div class="companion-body">{{ companion.text() }}</div>
-		<div class="companion-actions" *ngIf="companion.canReplayBroadcasts()">
-			<button type="button" class="companion-action" (click)="companion.playLast3Broadcasts()">Tocar últimas 3</button>
+		<div class="companion-actions" *ngIf="companion.actionsVisible()">
+			<button
+				type="button"
+				class="companion-action"
+				*ngIf="companion.unreadBroadcastCount() > 0"
+				(click)="companion.playUnreadBroadcasts()"
+			>
+				Ouvir mensagens ({{ companion.unreadBroadcastCount() }})
+			</button>
+			<button type="button" class="companion-action" (click)="companion.showTip()">Dica rápida</button>
+			<button type="button" class="companion-action" (click)="companion.showMotivation()">Motivação</button>
+			<button type="button" class="companion-action" (click)="companion.showShortcuts()">Atalhos</button>
+			<button type="button" class="companion-action" (click)="companion.showTimeTrackerInfo()">Time Tracker</button>
+			<button type="button" class="companion-action" (click)="companion.showHelp()">O que eu faço?</button>
+			<button
+				type="button"
+				class="companion-action"
+				*ngIf="companion.canReplayBroadcasts()"
+				(click)="companion.playLast3Broadcasts()"
+			>
+				Tocar últimas 3
+			</button>
+			<button type="button" class="companion-action" (click)="companion.bumpScale(-0.1)">Menor</button>
+			<button type="button" class="companion-action" (click)="companion.bumpScale(0.1)">Maior</button>
+			<button type="button" class="companion-action companion-action--danger" (click)="companion.setEnabled(false)">Esconder Noir</button>
 		</div>
 	</div>
 </div>

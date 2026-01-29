@@ -21,6 +21,10 @@ export interface LegacyTransaction {
   difference: number;
   creditedMinutes: number;
   timestamp: string;
+  sgss?: string;
+  tipoEmpresa?: string;
+  /** How the account was finished (when applicable). */
+  finishStatus?: 'concluida' | 'encerrada' | string;
   source: TransactionSource;
   assistant: LegacyAssistantInfo | null;
 }

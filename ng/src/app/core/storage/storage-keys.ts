@@ -11,4 +11,6 @@ export const STORAGE_KEYS = {
   flowMode: 'tma_comp_flow_mode_v1',
   activeFlowTimer: 'tma_comp_flow_active_timer_v1',
   analytics: 'tma_comp_analytics_v1',
+  citrixCaptureRegions: 'tma_comp_citrix_capture_regions_v1',
+  citrixCaptureScreen: 'tma_comp_citrix_capture_screen_v1',
 } as const;

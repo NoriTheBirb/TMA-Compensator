@@ -2,7 +2,16 @@ import { Injectable, signal, effect, computed } from '@angular/core';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 import { AuthService } from './auth.service';
+import { AppConfigService } from './app-config.service';
 import { SupabaseService } from './supabase.service';
+import {
+  type CompanionMood,
+  type CompanionPose,
+  type CompanionSpriteKey,
+  type CompanionTone,
+  COMPANION_PHRASES,
+  COMPANION_SPRITES,
+} from '../companion/companion-content';
 import { formatSignedTime, secondsToTime as formatSecondsToTime } from '../utils/time';
 
 export type CompanionState =
@@ -18,10 +27,31 @@ type SpeakKind = 'simple' | 'complex' | 'scold';
 type DialogueTone = 'normal' | 'scold';
 
 const LS_HIDDEN = 'tma_companion_hidden_v1';
+const LS_POSITION = 'tma_companion_position_v1';
+const LS_SCALE = 'tma_companion_scale_v1';
 const LS_NUDGE_PREFIX = 'tma_companion_nudge_';
 const LS_LAST_BROADCAST_ID = 'tma_last_broadcast_id_v1';
 const LS_UNREAD_BROADCASTS = 'tma_unread_broadcasts_v1';
 const LS_RECENT_BROADCASTS = 'tma_recent_broadcasts_v1';
+
+// Keep in sync with `ng/src/app/app.css` defaults.
+const COMPANION_DEFAULT_SIZE_PX = 270;
+const COMPANION_DEFAULT_MARGIN_PX = 14;
+const COMPANION_SCALE_MIN = 0.65;
+const COMPANION_SCALE_MAX = 1.55;
+
+type CompanionPosition = { x: number; y: number };
+
+type CompanionContext = {
+  sprint: boolean;
+  dayPartKey: string;
+  quotaDelta: number;
+  withinMarginNow: boolean;
+  predictedOk: boolean;
+  balanceSeconds: number;
+  doneTx: number;
+  remainingUnits: number;
+};
 
 type BroadcastMsg = {
   id: string;
@@ -49,6 +79,43 @@ function lsSetBool(key: string, value: boolean): void {
   }
 }
 
+function lsGetJson<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function lsSetJson(key: string, value: unknown): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // ignore
+  }
+}
+
+function lsGetNumber(key: string, fallback: number): number {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw == null) return fallback;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function lsSetNumber(key: string, value: number): void {
+  try {
+    localStorage.setItem(key, String(value));
+  } catch {
+    // ignore
+  }
+}
+
 @Injectable({ providedIn: 'root' })
 export class CompanionService {
   // Served via Angular assets (see angular.json): { input: 'src/app/images', output: 'images' }
@@ -70,6 +137,22 @@ export class CompanionService {
 
   readonly hidden = signal<boolean>(lsGetBool(LS_HIDDEN, false));
   readonly open = signal<boolean>(false);
+  readonly manualOpen = signal<boolean>(false);
+  readonly actionsVisible = computed(() => this.open() && this.manualOpen() && !this.hidden());
+
+  // Visual state (user-configurable)
+  readonly scale = signal<number>(this.loadInitialScale());
+  readonly sizePx = computed(() => Math.round(COMPANION_DEFAULT_SIZE_PX * this.scale()));
+
+  // Mood state (drives sprites). When state forces (angry/admin-message), it overrides this.
+  readonly mood = signal<CompanionMood>('default');
+  private moodResetTimer: number | null = null;
+
+  private readonly idleSpriteTick = signal<number>(0);
+
+  readonly context = signal<CompanionContext | null>(null);
+
+  readonly position = signal<CompanionPosition>(this.loadInitialPosition());
 
   readonly state = signal<CompanionState>('idle');
   readonly title = signal<string>('Noir');
@@ -98,8 +181,18 @@ export class CompanionService {
   constructor(
     private readonly sb: SupabaseService,
     private readonly auth: AuthService,
+    private readonly appConfig: AppConfigService,
   ) {
     this.ensureIdleTicker();
+
+    // Keep Noir on-screen if viewport changes.
+    try {
+      window.addEventListener('resize', () => {
+        this.setPosition(this.position());
+      });
+    } catch {
+      // ignore
+    }
 
     effect(() => {
       const ready = this.sb.ready();
@@ -117,19 +210,138 @@ export class CompanionService {
       const remainingSec = Math.max(0, Math.floor(Number(detail?.remainingSec) || 0));
       const remainingText = remainingSec ? `${remainingSec}s` : 'agora';
 
+      const title = COMPANION_PHRASES.dynamic.ttIdleWarning.title;
+      const body = this.formatTemplate(this.pickRandom([...COMPANION_PHRASES.dynamic.ttIdleWarning.body]), {
+        remaining: remainingText,
+      });
+
       // Desktop notification (best-effort; requires browser permission).
       this.tryDesktopNotify(
-        'Noir — Ociosidade involuntária',
-        `Você vai entrar em Ociosidade involuntária em ${remainingText}. Registra uma ação ou inicia um timer.`,
+        title,
+        body,
         { tag: 'tma-tt-idle-warning', renotify: true },
       );
 
       this.speak(
-        `Ei — você vai entrar em Ociosidade involuntária em ${remainingText}. Registra uma ação ou inicia um timer.`,
+        body,
         'scold',
         { autoCloseMs: 6500 },
       );
     });
+  }
+
+  setContext(ctx: Partial<CompanionContext> | null | undefined): void {
+    if (!ctx) {
+      this.context.set(null);
+      return;
+    }
+
+    const next: CompanionContext = {
+      sprint: Boolean((ctx as any).sprint),
+      dayPartKey: String((ctx as any).dayPartKey || ''),
+      quotaDelta: Number((ctx as any).quotaDelta) || 0,
+      withinMarginNow: Boolean((ctx as any).withinMarginNow),
+      predictedOk: Boolean((ctx as any).predictedOk),
+      balanceSeconds: Number((ctx as any).balanceSeconds) || 0,
+      doneTx: Number((ctx as any).doneTx) || 0,
+      remainingUnits: Number((ctx as any).remainingUnits) || 0,
+    };
+    this.context.set(next);
+  }
+
+  private clampPosition(posRaw: CompanionPosition): CompanionPosition {
+    const x = Math.floor(Number(posRaw?.x) || 0);
+    const y = Math.floor(Number(posRaw?.y) || 0);
+
+    const sizePx = Math.max(40, Math.floor(Number(this.sizePx()) || COMPANION_DEFAULT_SIZE_PX));
+
+    // In browsers, keep the square fully in viewport.
+    try {
+      const vw = Math.max(0, Math.floor(Number(window.innerWidth) || 0));
+      const vh = Math.max(0, Math.floor(Number(window.innerHeight) || 0));
+      const maxX = Math.max(0, vw - sizePx);
+      const maxY = Math.max(0, vh - sizePx);
+      return {
+        x: Math.min(Math.max(0, x), maxX),
+        y: Math.min(Math.max(0, y), maxY),
+      };
+    } catch {
+      return { x: Math.max(0, x), y: Math.max(0, y) };
+    }
+  }
+
+  private defaultPosition(): CompanionPosition {
+    const sizePx = Math.max(40, Math.floor(Number(this.sizePx()) || COMPANION_DEFAULT_SIZE_PX));
+    try {
+      const vw = Math.max(0, Math.floor(Number(window.innerWidth) || 0));
+      const vh = Math.max(0, Math.floor(Number(window.innerHeight) || 0));
+      return this.clampPosition({
+        x: vw - sizePx - COMPANION_DEFAULT_MARGIN_PX,
+        y: vh - sizePx - COMPANION_DEFAULT_MARGIN_PX,
+      });
+    } catch {
+      return { x: 0, y: 0 };
+    }
+  }
+
+  private loadInitialPosition(): CompanionPosition {
+    const raw = lsGetJson<any>(LS_POSITION, null);
+    if (raw && typeof raw === 'object') {
+      const x = Number(raw.x);
+      const y = Number(raw.y);
+      if (Number.isFinite(x) && Number.isFinite(y)) return this.clampPosition({ x, y });
+    }
+    return this.defaultPosition();
+  }
+
+  setPosition(posRaw: CompanionPosition): void {
+    const next = this.clampPosition(posRaw);
+    this.position.set(next);
+    lsSetJson(LS_POSITION, next);
+  }
+
+  private loadInitialScale(): number {
+    const raw = lsGetNumber(LS_SCALE, 1);
+    const n = Number.isFinite(raw) ? raw : 1;
+    return Math.min(COMPANION_SCALE_MAX, Math.max(COMPANION_SCALE_MIN, n));
+  }
+
+  setScale(scaleRaw: number): void {
+    const n = Number(scaleRaw);
+    const next = Math.min(COMPANION_SCALE_MAX, Math.max(COMPANION_SCALE_MIN, Number.isFinite(n) ? n : 1));
+    this.scale.set(next);
+    lsSetNumber(LS_SCALE, next);
+    // Re-clamp because size affects bounds.
+    this.setPosition(this.position());
+  }
+
+  bumpScale(delta: number): void {
+    const d = Number(delta);
+    if (!Number.isFinite(d) || d === 0) return;
+    const next = Math.round((this.scale() + d) * 100) / 100;
+    this.setScale(next);
+  }
+
+  private clearMoodReset(): void {
+    if (this.moodResetTimer == null) return;
+    try {
+      window.clearTimeout(this.moodResetTimer);
+    } catch {
+      // ignore
+    }
+    this.moodResetTimer = null;
+  }
+
+  private setMoodTemporary(mood: CompanionMood, ttlMs: number): void {
+    const m = String(mood || 'default') as CompanionMood;
+    this.mood.set(m);
+
+    const ms = Math.max(0, Math.floor(Number(ttlMs) || 0));
+    if (ms <= 0) return;
+    this.clearMoodReset();
+    this.moodResetTimer = window.setTimeout(() => {
+      this.mood.set('default');
+    }, ms);
   }
 
   private tryDesktopNotify(
@@ -191,7 +403,7 @@ export class CompanionService {
     if (totalSeconds > limit) {
       this.nudge(
         'tt_pause_over_15',
-        'Essa pausa passou de 15 minutos (máximo). Bora voltar e registrar direitinho pra não estourar o dia.',
+        this.pickRandom([...COMPANION_PHRASES.dynamic.pauseLimit.over15]),
         'scold',
         { autoCloseMs: 9000, minIntervalMs: 8 * 60 * 1000 },
       );
@@ -201,7 +413,7 @@ export class CompanionService {
     if (totalSeconds >= limit) {
       this.nudge(
         'tt_pause_hit_15',
-        'Fechou 15 minutos de pausa. Bora voltar pro jogo.',
+        this.pickRandom([...COMPANION_PHRASES.dynamic.pauseLimit.hit15]),
         'simple',
         { autoCloseMs: 7000, minIntervalMs: 8 * 60 * 1000 },
       );
@@ -311,6 +523,14 @@ export class CompanionService {
     // Voicemail behavior: do not auto-popup; queue as unread.
     if (!opts?.silent) {
       this.pushUnreadBroadcast(normalized);
+
+      // Desktop notification (best-effort; requires browser permission).
+      // Only when Noir is enabled, to avoid notifying users who disabled the assistant.
+      if (!this.hidden()) {
+        const title = this.formatBroadcastTitle(normalized);
+        const body = normalized.message.length > 220 ? `${normalized.message.slice(0, 217)}…` : normalized.message;
+        this.tryDesktopNotify(`Noir — ${title}`, body, { tag: `tma-broadcast-${normalized.id}`, renotify: true });
+      }
     }
   }
 
@@ -507,7 +727,7 @@ export class CompanionService {
     key: string,
     text: string,
     kind: SpeakKind = 'simple',
-    opts?: { title?: string; autoCloseMs?: number; minIntervalMs?: number },
+    opts?: { title?: string; autoCloseMs?: number; minIntervalMs?: number; mood?: CompanionMood },
   ): void {
     if (this.hidden()) return;
 
@@ -525,6 +745,11 @@ export class CompanionService {
       }
     }
 
+    if (opts?.mood) {
+      const ttl = Math.max(0, Math.floor(Number(opts?.autoCloseMs) || 0)) + 2500;
+      this.setMoodTemporary(opts.mood, ttl > 0 ? ttl : 12_000);
+    }
+
     this.speak(text, kind, { title: opts?.title, autoCloseMs: opts?.autoCloseMs });
 
     try {
@@ -535,33 +760,61 @@ export class CompanionService {
   }
 
   imageUrl(): string {
-    switch (this.state()) {
-      case 'reading-idle':
-        return this.imgReadingIdle;
-      case 'speaking':
-        return this.imgSpeaking;
-      case 'reading-speaking':
-        return this.imgReadingSpeaking;
-      case 'angry':
-        return this.imgAngry;
-      case 'admin-message':
-        return this.imgAdminMessage;
-      case 'idle':
-      default:
-        return this.imgIdle;
-    }
+    const st = this.state();
+
+    const mood: CompanionMood = st === 'angry' ? 'angry' : st === 'admin-message' ? 'admin_message' : this.mood();
+    const pose: CompanionPose = st === 'idle' || st === 'reading-idle' ? 'idle' : 'speaking';
+    const key = `${mood}_${pose}` as CompanionSpriteKey;
+
+    const spriteSet = this.appConfig.sprintModeEnabled() ? COMPANION_SPRITES.sprint : COMPANION_SPRITES.normal;
+    const raw =
+      spriteSet[key] ||
+      COMPANION_SPRITES.normal[key] ||
+      COMPANION_SPRITES.normal.default_speaking ||
+      'images/Reading-speaking_bg_removed.png.png';
+
+    const path = (() => {
+      if (Array.isArray(raw)) {
+        const arr = raw.filter(Boolean);
+        if (!arr.length) return '';
+        const i = pose === 'idle' ? (this.idleSpriteTick() % arr.length) : 0;
+        return String(arr[i] || arr[0] || '').trim();
+      }
+      return String(raw || '').trim();
+    })();
+
+    return this.assetUrl(path);
   }
 
   setHidden(hidden: boolean): void {
     this.hidden.set(Boolean(hidden));
     lsSetBool(LS_HIDDEN, Boolean(hidden));
-    if (hidden) this.open.set(false);
+    if (hidden) {
+      this.open.set(false);
+      this.manualOpen.set(false);
+    }
+  }
+
+  close(): void {
+    this.open.set(false);
+    this.manualOpen.set(false);
+    this.clearAutoClose();
+    this.clearBroadcastPlayback();
+    this.setIdle();
   }
 
   toggleOpen(): void {
     if (this.hidden()) return;
+
+    // If Noir opened automatically (auto message), a click should reveal controls (not close).
+    if (this.open() && !this.manualOpen()) {
+      this.manualOpen.set(true);
+      return;
+    }
+
     this.open.update((v) => !v);
     if (this.open()) {
+      this.manualOpen.set(true);
       // If there are unread admin messages, clicking Noir plays them (voicemail).
       if (this.unreadBroadcastCount() > 0) {
         this.playUnreadBroadcasts();
@@ -571,16 +824,11 @@ export class CompanionService {
       // If the user opens it manually, show a friendly idle line.
       if (!this.text()) {
         this.title.set('Noir');
-        this.text.set(this.pickRandom([
-          'Tô aqui. Se quiser, eu explico as coisas aos poucos.',
-          'Pronto. Me chama quando quiser uma dica rápida.',
-          'Quer uma dica? Clica em “Dica rápida”.',
-          'Se tiver Time Tracker ligado, eu aviso antes do idle involuntário.',
-          'Posso te ajudar a manter consistência sem correria.',
-        ]));
+        this.text.set(this.pickOpenIdleLine());
       }
       if (this.state() === 'idle' || this.state() === 'reading-idle') this.state.set('speaking');
     } else {
+      this.manualOpen.set(false);
       this.clearAutoClose();
       this.clearBroadcastPlayback();
       this.setIdle();
@@ -592,6 +840,90 @@ export class CompanionService {
     if (!arr.length) return '';
     const i = Math.floor(Math.random() * arr.length);
     return String(arr[i] || '').trim();
+  }
+
+  private formatTemplate(textRaw: string, tokens: Record<string, string | number>): string {
+    let text = String(textRaw || '');
+    for (const [k, v] of Object.entries(tokens || {})) {
+      const key = String(k || '').trim();
+      if (!key) continue;
+      text = text.replaceAll(`{${key}}`, String(v ?? ''));
+    }
+    return text;
+  }
+
+  private ctxSnapshot(): CompanionContext {
+    const ctx = this.context();
+    if (ctx) return ctx;
+
+    return {
+      sprint: this.appConfig.sprintModeEnabled(),
+      dayPartKey: '',
+      quotaDelta: 0,
+      withinMarginNow: false,
+      predictedOk: false,
+      balanceSeconds: 0,
+      doneTx: 0,
+      remainingUnits: 0,
+    };
+  }
+
+  private ctxDayPart(keyRaw: string): 'early' | 'mid' | 'late' | 'lunch' | 'post' | 'unknown' {
+    const k = String(keyRaw || '').trim().toLowerCase();
+    if (!k) return 'unknown';
+    if (k === 'post') return 'post';
+    if (k.includes('lunch') || k.includes('alm')) return 'lunch';
+    if (k.includes('pre') || k.includes('start') || k.includes('early') || k === 'pre') return 'early';
+    if (k.includes('late') || k.includes('end')) return 'late';
+    if (k.includes('mid')) return 'mid';
+    return 'unknown';
+  }
+
+  private dialogueContext(): {
+    sprint: boolean;
+    dayPart: 'early' | 'mid' | 'late' | 'lunch' | 'post' | 'unknown';
+    behind: boolean;
+    good: boolean;
+    late: boolean;
+  } {
+    const ctx = this.ctxSnapshot();
+    const dayPart = this.ctxDayPart(ctx.dayPartKey);
+    const late = dayPart === 'late';
+
+    const behind = Number(ctx.quotaDelta) <= -2 || Number(ctx.balanceSeconds) < -10 * 60;
+    const good =
+      Boolean(ctx.predictedOk) ||
+      Boolean(ctx.withinMarginNow) ||
+      Number(ctx.quotaDelta) >= 1 ||
+      Number(ctx.balanceSeconds) > 8 * 60;
+
+    return { sprint: Boolean(ctx.sprint), dayPart, behind, good, late };
+  }
+
+  private pickOpenIdleLine(): string {
+    const c = this.dialogueContext();
+    const p = COMPANION_PHRASES.dynamic.openIdle;
+    const lines = [
+      ...(c.sprint ? p.sprint || [] : p.base || []),
+      ...(c.late ? p.late || [] : []),
+      ...(c.behind ? p.behind || [] : []),
+      ...(!c.behind && c.good ? p.good || [] : []),
+    ].filter(Boolean);
+
+    const fallback = [...COMPANION_PHRASES.openIdle];
+    return this.pickRandom(lines.length ? lines : fallback);
+  }
+
+  private normalizeTimerBucket(itemLower: string): string {
+    const s = String(itemLower || '').trim().toLowerCase();
+    if (!s) return 'default';
+    if (s === 'pausa') return 'pausa';
+    if (s === 'almoço' || s === 'almoco') return 'almoço';
+    if (s === 'falha sistemica' || s === 'falha sistêmica' || s === 'falha_sistemica') return 'falha_sistemica';
+    if (s === 'ociosidade') return 'ociosidade';
+    if (s === 'processo interno' || s === 'processo_interno') return 'processo_interno';
+    if (s === 'daily') return 'daily';
+    return 'default';
   }
 
   private typeLabel(type: string): string {
@@ -609,48 +941,12 @@ export class CompanionService {
     const item = raw.toLowerCase();
     const key = `tt_finish_${item}`;
 
-    const lines = (() => {
-      switch (item) {
-        case 'pausa':
-          return [
-            'Pausa finalizada. Agora é hora de transformar café em resultado.',
-            'Voltamos. O teclado sentiu sua falta.',
-          ];
-        case 'almoço':
-          return [
-            'Almoço finalizado. Bora voltar pro modo “resolve e registra”.',
-            'Bem-vindo(a) de volta. Agora sim: foco, calma e consistência.',
-          ];
-        case 'falha sistemica':
-        case 'falha sistêmica':
-          return [
-            'Falha sistêmica encerrada. Que os servidores tenham piedade hoje.',
-            'Voltou. Agora finge que foi tudo “planejado”.',
-          ];
-        case 'ociosidade':
-          return [
-            'Ociosidade finalizada. Hora de registrar algo que exista no plano material.',
-            'Bora voltar. O relógio tava ganhando de você.',
-          ];
-        case 'processo interno':
-          return [
-            'Processo interno finalizado. Checklist feito, consciência tranquila.',
-            'Encerrado. Agora é mundo real de novo.',
-          ];
-        case 'daily':
-          return [
-            'Daily finalizada. Agora sim: trabalhar de verdade.',
-            'Reunião encerrada. Voltamos ao modo execução.',
-          ];
-        default:
-          return [
-            `Finalizado: ${raw}.`,
-            `Ok — ${raw} encerrado.`,
-          ];
-      }
-    })();
+    const bucket = this.normalizeTimerBucket(item);
+    const map = COMPANION_PHRASES.dynamic.timeTracker.finish as any;
+    const lines = (map[bucket] || map.default || []) as string[];
+    const msg = this.formatTemplate(this.pickRandom(lines), { item: raw });
 
-    this.nudge(key, this.pickRandom(lines), 'simple', { title: 'Noir', autoCloseMs: 9000, minIntervalMs: 2 * 60 * 1000 });
+    this.nudge(key, msg, 'simple', { title: 'Noir', autoCloseMs: 9000, minIntervalMs: 2 * 60 * 1000 });
   }
 
   sayAccountFinish(itemRaw: string, typeRaw: string): void {
@@ -665,14 +961,12 @@ export class CompanionService {
     const key = `acc_finish_${item.toLowerCase()}_${type.toLowerCase()}`;
     const typeLabel = this.typeLabel(type);
 
-    const lines = this.pickRandom([
-      `Boa. Finalizado: ${item} • ${typeLabel}.`,
-      `Fechou ${item} • ${typeLabel}. Agora é só não esquecer do registro.`,
-      `Conta encerrada: ${item} • ${typeLabel}. Sem drama, só consistência.`,
-      `Finalizou ${item} • ${typeLabel}. Próxima!`,
-    ]);
+    const c = this.dialogueContext();
+    const base = c.sprint ? COMPANION_PHRASES.dynamic.account.finish.sprint : COMPANION_PHRASES.dynamic.account.finish.normal;
+    const lines = [...base, ...(c.late ? (COMPANION_PHRASES.dynamic.account.finish.late || []) : [])].filter(Boolean);
+    const msg = this.formatTemplate(this.pickRandom(lines), { item, type: typeLabel });
 
-    this.nudge(key, lines, 'simple', { title: 'Noir', autoCloseMs: 8500, minIntervalMs: 60 * 1000 });
+    this.nudge(key, msg, 'simple', { title: 'Noir', autoCloseMs: 8500, minIntervalMs: 60 * 1000 });
   }
 
   sayAccountTmaFeedback(input: { item: string; type: string; tmaSeconds: number; timeSpentSeconds: number }): void {
@@ -702,21 +996,21 @@ export class CompanionService {
 
     const verdict = (() => {
       if (absDiff <= goodAbsSeconds) {
-        return this.pickRandom(['Perfeito. Diferença perto de 0.', 'Boa! Isso aí é “meta: zero”.', 'Na mosca.'])
+        return this.pickRandom([...COMPANION_PHRASES.dynamic.tma.perfect]);
       }
 
       if (absDiff >= warnAbsSeconds) {
         if (diffSeconds > 0) {
-          return 'Atenção: acima do TMA. Ajusta pro setup padrão pra voltar pro zero.';
+          return this.pickRandom([...COMPANION_PHRASES.dynamic.tma.warnAbove]);
         }
-        return 'Atenção: abaixo demais do TMA. Mantém qualidade e padrão pra voltar pro zero.';
+        return this.pickRandom([...COMPANION_PHRASES.dynamic.tma.warnBelow]);
       }
 
       // Mid band: gentle coaching.
       if (diffSeconds > 0) {
-        return 'Um pouco acima. Dá pra puxar pro padrão.';
+        return this.pickRandom([...COMPANION_PHRASES.dynamic.tma.midAbove]);
       }
-      return 'Um pouco abaixo. Mantém o padrão pra não distorcer.';
+      return this.pickRandom([...COMPANION_PHRASES.dynamic.tma.midBelow]);
     })();
 
     const kind: SpeakKind = absDiff <= goodAbsSeconds ? 'simple' : absDiff >= warnAbsSeconds ? 'scold' : 'simple';
@@ -730,10 +1024,14 @@ export class CompanionService {
   }
 
   welcomeAuth(mode: 'signin' | 'signup'): void {
+    const msg = this.pickRandom([
+      ...(mode === 'signin'
+        ? COMPANION_PHRASES.dynamic.authWelcome.signin
+        : COMPANION_PHRASES.dynamic.authWelcome.signup),
+    ]);
+
     this.speak(
-      mode === 'signin'
-        ? 'Bem-vindo de volta. Entra aí — seus dados vão sincronizar.'
-        : 'Bora criar sua conta. Dica: use um usuário simples (tipo joao.silva).',
+      msg,
       'simple',
       { autoCloseMs: 5000 },
     );
@@ -745,6 +1043,9 @@ export class CompanionService {
     opts?: { title?: string; autoCloseMs?: number; avatar?: 'default' | 'admin-message' },
   ): void {
     if (this.hidden()) return;
+
+    // Sprint mode should be intense but not punitive.
+    if (this.appConfig.sprintModeEnabled() && kind === 'scold') kind = 'simple';
 
     const title = String(opts?.title || 'Noir');
     const msg = String(text || '').trim();
@@ -765,12 +1066,17 @@ export class CompanionService {
 
     this.open.set(true);
 
+    // Auto messages should not show action buttons unless the user has explicitly opened Noir.
+    if (!this.manualOpen()) this.manualOpen.set(false);
+
     const autoCloseMs = Math.max(0, Math.floor(Number(opts?.autoCloseMs) || 0));
     if (autoCloseMs > 0) {
       this.clearAutoClose();
       this.autoCloseTimer = window.setTimeout(() => {
         this.open.set(false);
         this.text.set('');
+        // If it was an auto-popup (no manual open), keep actions hidden.
+        if (!this.manualOpen()) this.manualOpen.set(false);
         this.setIdle();
       }, autoCloseMs);
     }
@@ -799,51 +1105,143 @@ export class CompanionService {
   private setIdle(): void {
     this.idleFlip = !this.idleFlip;
     this.state.set(this.idleFlip ? 'reading-idle' : 'idle');
+    this.idleSpriteTick.update((v) => (Number.isFinite(v) ? v + 1 : 1));
   }
 
   showHelp(): void {
+    this.setMoodTemporary('tablet', 22_000);
     this.speak(
-      'Eu sou seu copiloto aqui.\n\n- Te dou dicas rápidas\n- Te aviso quando você tá muito atrás da meta\n- Te puxo a orelha antes de entrar em Ociosidade involuntária (Time Tracker)\n\nSe eu estiver atrapalhando, você pode me desligar na barra lateral.',
+      COMPANION_PHRASES.help,
       'complex',
       { title: 'Noir', autoCloseMs: 14000 },
     );
   }
 
   showTip(): void {
+    const c = this.dialogueContext();
+    const p = COMPANION_PHRASES.dynamic.tips;
+    const lines = [
+      ...(c.sprint ? p.sprint || [] : p.base || []),
+      ...(c.late ? p.late || [] : []),
+      ...(c.behind ? p.behind || [] : []),
+    ].filter(Boolean);
+
     this.speak(
-      'Dica rápida: consistência > pressa. Padroniza o começo da conta (setup) e você ganha tempo sem “correr”.',
+      this.pickRandom(lines.length ? lines : [...COMPANION_PHRASES.tips]),
       'simple',
       { title: 'Dica', autoCloseMs: 8000 },
     );
   }
 
   showMotivation(): void {
+    const c = this.dialogueContext();
+    const tone: CompanionTone = (() => {
+      if (this.state() === 'angry') return 'angry';
+      if (c.behind && c.late) return 'angry';
+      if (c.behind) return 'serious';
+      if (c.good) return (this.pickRandom(['funny', 'neutral'] as CompanionTone[]) as CompanionTone) || 'neutral';
+      return (this.pickRandom(['funny', 'serious', 'neutral'] as CompanionTone[]) as CompanionTone) || 'neutral';
+    })();
+
     this.speak(
-      this.pickRandom([
-        'Um passo de cada vez. Mantém o ritmo e o saldo encaixa.',
-        'Consistência ganha do “sprint”. Faz limpo e segue.',
-        'Se você tá atrás: reduz variação, não aumenta pressa.',
-        'Hoje é dia de execução: menos dúvida, mais padrão.',
-        'Respira. Uma conta bem feita agora vale por duas corridas.',
-      ]),
+      this.pickRandom([...(COMPANION_PHRASES.motivation[tone] || COMPANION_PHRASES.motivation.neutral)]),
       'simple',
       { title: 'Motivação', autoCloseMs: 9000 },
     );
   }
 
   showShortcuts(): void {
+    this.setMoodTemporary('tablet', 22_000);
     this.speak(
-      'Atalhos/fluxo sugerido:\n\n1) Setup padrão (mesma ordem sempre)\n2) Checar bloqueios\n3) Resolver\n4) Registrar\n\nSe estiver em TT: registra uma ação antes de parar pra evitar idle involuntário.',
+      COMPANION_PHRASES.shortcuts,
       'complex',
       { title: 'Atalhos', autoCloseMs: 16000 },
     );
   }
 
   showTimeTrackerInfo(): void {
+    this.setMoodTemporary('tablet', 22_000);
     this.speak(
-      'Time Tracker:\n\n- Eu aviso antes de entrar em “Ociosidade involuntária”\n- Idle involuntário NÃO aparece no seu histórico (só admin vê)\n- Idle nunca deve travar você: registra uma ação e segue\n\nSe quiser, te dou um lembrete de ritmo também (sem spam).',
+      COMPANION_PHRASES.timeTrackerInfo,
       'complex',
       { title: 'Time Tracker', autoCloseMs: 17000 },
+    );
+  }
+
+  sayQuotaBehind(quotaDeltaRaw: number): void {
+    const q = Number(quotaDeltaRaw);
+    if (!Number.isFinite(q)) return;
+    if (q > -2) return;
+
+    this.nudge(
+      'quota_behind',
+      this.formatTemplate(this.pickRandom([...COMPANION_PHRASES.dynamic.kpis.quotaBehind]), { quotaDelta: q }),
+      'simple',
+      { autoCloseMs: 6500, minIntervalMs: 18 * 60 * 1000 },
+    );
+  }
+
+  sayBalanceDrifting(balanceSecondsRaw: number): void {
+    const bal = Number(balanceSecondsRaw);
+    if (!Number.isFinite(bal)) return;
+    if (Math.abs(bal) < 20 * 60) return;
+
+    this.nudge(
+      'saldo_far',
+      this.pickRandom([...COMPANION_PHRASES.dynamic.kpis.balanceFar]),
+      'complex',
+      { autoCloseMs: 8000, minIntervalMs: 25 * 60 * 1000 },
+    );
+  }
+
+  sayWorkdayStarted(): void {
+    this.nudge('workday_started', this.pickRandom([...COMPANION_PHRASES.dynamic.kpis.workdayStarted]), 'simple', {
+      title: 'Início do dia',
+      autoCloseMs: 6500,
+      minIntervalMs: 0,
+    });
+  }
+
+  sayAdminBroadcastSent(): void {
+    this.speak(this.pickRandom([...COMPANION_PHRASES.dynamic.admin.broadcastSent]), 'simple', {
+      title: 'Admin',
+      autoCloseMs: 5000,
+    });
+  }
+
+  sayMetaHit(): void {
+    const c = this.dialogueContext();
+    const lines = c.sprint ? COMPANION_PHRASES.dynamic.account.meta17.sprint : COMPANION_PHRASES.dynamic.account.meta17.normal;
+    this.nudge(
+      'meta_17',
+      this.pickRandom([...lines]),
+      'simple',
+      { title: 'Meta', autoCloseMs: 9500, minIntervalMs: 35 * 60 * 1000, mood: 'congrats' },
+    );
+  }
+
+  saySprintFastAccount(input: { item: string; type: string; timeSpentSeconds: number }): void {
+    if (this.hidden()) return;
+
+    // Only relevant for sprint mode.
+    if (!this.appConfig.sprintModeEnabled()) return;
+
+    const item = String(input?.item || '').trim();
+    const type = String(input?.type || '').trim();
+    const spent = Math.max(0, Math.floor(Number(input?.timeSpentSeconds) || 0));
+    if (!item || !type) return;
+    if (!Number.isFinite(spent) || spent <= 0) return;
+    if (type.toLowerCase() === 'time_tracker') return;
+
+    const fastLimit = 15 * 60;
+    if (spent > fastLimit) return;
+
+    const key = `sprint_fast_${item.toLowerCase()}_${type.toLowerCase()}`.replace(/\s+/g, '_');
+    this.nudge(
+      key,
+      this.pickRandom([...COMPANION_PHRASES.dynamic.account.sprintFast]),
+      'simple',
+      { title: 'Sprint', autoCloseMs: 6500, minIntervalMs: 8 * 60 * 1000, mood: 'congrats' },
     );
   }
 
@@ -853,30 +1251,28 @@ export class CompanionService {
     if (!item || !type) return;
 
     const key = `start_${item.toLowerCase()}_${type.toLowerCase()}`.replace(/\s+/g, '_');
-    this.nudge(
-      key,
-      this.pickRandom([
-        `Bora. ${item} • ${type}.`,
-        `Fechado: ${item} • ${type}. Faz o setup padrão e segue.`,
-        `Boa. ${item} • ${type}. Sem pressa, sem erro.`,
-        `Ok — ${item} • ${type}. Consistência e vamo.`,
-      ]),
-      'simple',
-      { title: 'Começou', autoCloseMs: 4500, minIntervalMs: Math.max(0, Math.floor(Number(opts?.minIntervalMs) || 0)) || 90_000 },
-    );
+    const c = this.dialogueContext();
+    const base = c.sprint ? COMPANION_PHRASES.dynamic.account.start.sprint : COMPANION_PHRASES.dynamic.account.start.normal;
+    const lines = [
+      ...base,
+      ...(c.late ? (COMPANION_PHRASES.dynamic.account.start.late || []) : []),
+      ...(c.behind ? (COMPANION_PHRASES.dynamic.account.start.behind || []) : []),
+    ].filter(Boolean);
+    const msg = this.formatTemplate(this.pickRandom(lines), { item, type });
+    this.nudge(key, msg, 'simple', {
+      title: 'Começou',
+      autoCloseMs: 4500,
+      minIntervalMs: Math.max(0, Math.floor(Number(opts?.minIntervalMs) || 0)) || 90_000,
+    });
   }
 
   sayLunchStart(source: 'schedule' | 'manual' = 'schedule'): void {
     const title = source === 'manual' ? 'Almoço (TT)' : 'Almoço';
     this.nudge(
       'lunch_start',
-      this.pickRandom([
-        'Hora do almoço. Descansa 10/10 e volta leve.',
-        'Vai lá. Água + comida e volta no ritmo.',
-        'Almoço: pausa de verdade. Depois a gente acelera com calma.',
-      ]),
+      this.pickRandom([...COMPANION_PHRASES.dynamic.lunch.start]),
       'simple',
-      { title, autoCloseMs: 9000, minIntervalMs: 20 * 60 * 1000 },
+      { title, autoCloseMs: 9000, minIntervalMs: 20 * 60 * 1000, mood: 'lunch_1' },
     );
   }
 
@@ -884,13 +1280,9 @@ export class CompanionService {
     const title = source === 'manual' ? 'Volta (TT)' : 'Volta do almoço';
     this.nudge(
       'lunch_back',
-      this.pickRandom([
-        'Bem-vindo de volta. Bora de “setup padrão” na próxima conta.',
-        'Voltou. Agora é ritmo constante, sem sprint.',
-        'De volta ao jogo. Uma conta limpa por vez.',
-      ]),
+      this.pickRandom([...COMPANION_PHRASES.dynamic.lunch.back]),
       'simple',
-      { title, autoCloseMs: 8500, minIntervalMs: 20 * 60 * 1000 },
+      { title, autoCloseMs: 8500, minIntervalMs: 20 * 60 * 1000, mood: 'lunch_2' },
     );
   }
 
@@ -901,48 +1293,10 @@ export class CompanionService {
     const key = `tt_${item.toLowerCase()}`.replace(/\s+/g, '_');
     const title = `TT: ${item}`;
 
-    const msg = (() => {
-      switch (item.toLowerCase()) {
-        case 'pausa':
-          return this.pickRandom([
-            'Pausa ativada. Vai lá — mas volta antes que eu comece a sentir saudade.',
-            'Pausa. Água, respira, estica. Sem sumir do mapa.',
-            'Pausa mode: ON. Seu eu do futuro agradece.',
-          ]);
-        case 'almoço':
-          return this.pickRandom([
-            'Almoço: desbloqueado. Come direito e volta no modo máquina (calma).',
-            'Hora do rango. Prometo não contar quantos minutos você demorou… muito.',
-            'Almoço: ativado. Missão secundária: hidratação.',
-          ]);
-        case 'falha sistemica':
-          return this.pickRandom([
-            'Falha sistêmica. O sistema pediu férias hoje.',
-            'Falha sistêmica: clássico. Respira — a culpa não é sua.',
-            'Sistema caiu? Beleza. Registra direitinho e segue o baile.',
-          ]);
-        case 'ociosidade':
-          return this.pickRandom([
-            'Ociosidade. Às vezes o cérebro pede um loading… só não deixa virar temporada.',
-            'Ociosidade ativada. Pequena pausa, grande retorno.',
-            'Ok, modo “pensando na vida”. Volta já já e a gente recupera.',
-          ]);
-        case 'processo interno':
-          return this.pickRandom([
-            'Processo interno: aquele famoso “trabalho invisível”.',
-            'Processo interno ativado. Sim, isso conta como trabalho (e eu sei).',
-            'Processo interno. Documenta e não se culpa: faz parte.',
-          ]);
-        case 'daily':
-          return this.pickRandom([
-            'Daily: hora do “bom dia” corporativo. Sobrevive e volta pro jogo.',
-            'Daily ativada. Fala pouco, fala claro, volta rápido.',
-            'Daily. Lembrete: câmera optional, consistência mandatory.',
-          ]);
-        default:
-          return `Time Tracker: ${item}.`;
-      }
-    })();
+    const bucket = this.normalizeTimerBucket(item.toLowerCase());
+    const map = COMPANION_PHRASES.dynamic.timeTracker.start as any;
+    const lines = (map[bucket] || map.default || []) as string[];
+    const msg = this.formatTemplate(this.pickRandom(lines), { item });
 
     this.nudge(key, msg, 'simple', { title, autoCloseMs: 9000, minIntervalMs: 6 * 60 * 1000 });
   }
@@ -951,36 +1305,25 @@ export class CompanionService {
     const rem = String(remainingHuman || '').trim();
     this.nudge(
       'end_day_soon',
-      this.pickRandom([
-        `Tá chegando no fim do turno (${rem} restantes). Fecha as pendências e mantém o padrão.`,
-        `Fim do dia chegando (${rem}). Prioriza consistência e registro certinho.`,
-        `Último trecho (${rem}). Sem pressa: só não deixa pendência aberta.`,
-      ]),
+      this.formatTemplate(this.pickRandom([...COMPANION_PHRASES.dynamic.endOfDaySoon]), { remaining: rem }),
       'complex',
-      { title: 'Fim do turno', autoCloseMs: 14000, minIntervalMs: 30 * 60 * 1000 },
+      { title: 'Fim do turno', autoCloseMs: 14000, minIntervalMs: 30 * 60 * 1000, mood: 'end_shift' },
     );
   }
 
   sayShiftEnded(): void {
     this.nudge(
       'shift_ended',
-      this.pickRandom([
-        'Turno encerrado. Se precisar, finaliza o que faltou e registra direitinho.',
-        'Acabou o turno. Fecha o que estiver aberto e finaliza o dia.',
-      ]),
+      this.pickRandom([...COMPANION_PHRASES.dynamic.shiftEnded]),
       'simple',
-      { title: 'Turno', autoCloseMs: 11000, minIntervalMs: 60 * 60 * 1000 },
+      { title: 'Turno', autoCloseMs: 11000, minIntervalMs: 60 * 60 * 1000, mood: 'end_shift' },
     );
   }
 
   sayFinishWorkDay(tone: DialogueTone = 'normal'): void {
     const kind: SpeakKind = tone === 'scold' ? 'scold' : 'simple';
     this.speak(
-      this.pickRandom([
-        'Fechou. Bom trabalho hoje. Exporta o fim do dia e descansa.',
-        'Dia finalizado. Amanhã a gente repete o padrão e melhora um pouco.',
-        'Encerrado. Boa. Só confere se tá tudo registrado certinho.',
-      ]),
+      this.pickRandom([...COMPANION_PHRASES.dynamic.finishWorkDay]),
       kind,
       { title: 'Finalizado', autoCloseMs: 12000 },
     );

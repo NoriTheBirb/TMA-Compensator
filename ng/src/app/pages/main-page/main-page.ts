@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, HostListener, computed, effect, signal } from '@angular/core';
+import { Component, HostListener, computed, effect, OnDestroy, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 
@@ -7,16 +7,19 @@ import type { AccountAction } from '../../core/models/account-action';
 import type { LegacyTransaction } from '../../core/models/transaction';
 import type { ActiveFlowTimerPersisted, PausedWorkEntry } from '../../core/models/paused-work';
 import { AuthService } from '../../core/services/auth.service';
+import { CitrixHelperService } from '../../core/services/citrix-helper.service';
 import { CompanionService } from '../../core/services/companion.service';
+import { CorrectionRequestsService } from '../../core/services/correction-requests.service';
 import { ProfileService } from '../../core/services/profile.service';
 import { AppStateService } from '../../core/state/app-state.service';
+import { StorageService } from '../../core/storage/storage.service';
 import {
   formatSignedTime,
   secondsToClockHHMM,
   secondsToTime as formatSecondsToTime,
   timeToSeconds as parseTimeToSeconds,
 } from '../../core/utils/time';
-import { formatDateTimeSaoPaulo } from '../../core/utils/tz';
+import { formatDateTimeSaoPaulo, SAO_PAULO_TZ } from '../../core/utils/tz';
 
 @Component({
   selector: 'app-main-page',
@@ -24,14 +27,18 @@ import { formatDateTimeSaoPaulo } from '../../core/utils/tz';
   templateUrl: './main-page.html',
   styleUrl: './main-page.css',
 })
-export class MainPage {
+export class MainPage implements OnDestroy {
   private prevActiveFlowTimer: ActiveFlowTimerPersisted | null = null;
+  private workLockListener: ((ev: Event) => void) | null = null;
 
   constructor(
     protected readonly state: AppStateService,
     private readonly auth: AuthService,
+    private readonly storage: StorageService,
+    private readonly citrixHelper: CitrixHelperService,
     protected readonly profile: ProfileService,
     protected readonly companion: CompanionService,
+    private readonly correctionRequests: CorrectionRequestsService,
     private readonly router: Router,
   ) {
 		try {
@@ -41,15 +48,12 @@ export class MainPage {
 			// ignore
 		}
 
-    // Apply a CSS hook for Time Tracker mode.
-    effect(() => {
-      const enabled = this.profile.timeTrackerEnabled();
-      try {
-        document.body?.classList?.toggle('time-tracker-mode', Boolean(enabled));
-      } catch {
-        // ignore
-      }
-    });
+    // Time Tracker is enabled for everyone.
+    try {
+      document.body?.classList?.add('time-tracker-mode');
+    } catch {
+      // ignore
+    }
 
     let prevOnboardingOpen = false;
     effect(() => {
@@ -70,37 +74,51 @@ export class MainPage {
     });
 
     // Time Tracker users: enable inactivity auto-tracking ("Ociosidade involuntaria").
-    effect(() => {
-      this.state.setTimeTrackerModeEnabled(this.profile.timeTrackerEnabled());
-    });
+    this.state.setTimeTrackerModeEnabled(true);
 
     // Companion nudges (low-noise; cooldown-protected).
+    let prevQuotaDelta: number | null = null;
+    let prevDoneTx: number | null = null;
     effect(() => {
       const k = this.state.assistantKpis();
       if (!k) return;
 
+      // Keep Noir aware of the current day context for adaptive dialogue.
+      this.companion.setContext({
+        sprint: this.state.sprintModeEnabled(),
+        dayPartKey: String((k as any).dayPart?.key || ''),
+        quotaDelta: Number((k as any).quotaDelta) || 0,
+        withinMarginNow: Boolean((k as any).withinMarginNow),
+        predictedOk: Boolean((k as any).predictedOk),
+        balanceSeconds: Number(this.state.balanceSeconds()) || 0,
+        doneTx: Number((k as any).doneTx) || 0,
+        remainingUnits: Number((k as any).remainingUnits) || 0,
+      });
+
       // Only nudge during the active day.
       if (k.dayPart?.key === 'post') return;
 
+      // Congratulate when reaching 17 accounts done.
+      const curDoneTx = Number((k as any).doneTx);
+      if (Number.isFinite(curDoneTx)) {
+        if (prevDoneTx != null && Number.isFinite(prevDoneTx) && prevDoneTx < 17 && curDoneTx >= 17) {
+          this.companion.sayMetaHit();
+        }
+        prevDoneTx = curDoneTx;
+      }
+
+      const curQuotaDelta = Number(k.quotaDelta);
+      if (Number.isFinite(curQuotaDelta)) prevQuotaDelta = curQuotaDelta;
+
       // Behind schedule.
       if (Number(k.quotaDelta) <= -3) {
-        this.companion.nudge(
-          'quota_behind',
-          `Você está ${k.quotaDelta} atrás da meta agora. Se fizer o básico bem feito, você recupera.`,
-          'simple',
-          { autoCloseMs: 6500, minIntervalMs: 18 * 60 * 1000 },
-        );
+        this.companion.sayQuotaBehind(Number(k.quotaDelta));
       }
 
       // Balance drifting too far.
       const bal = Number(this.state.balanceSeconds()) || 0;
       if (Math.abs(bal) >= 20 * 60) {
-        this.companion.nudge(
-          'saldo_far',
-          'Seu saldo tá ficando longe de 0. Faz 2–3 contas com setup bem padrão pra estabilizar.',
-          'complex',
-          { autoCloseMs: 8000, minIntervalMs: 25 * 60 * 1000 },
-        );
+        this.companion.sayBalanceDrifting(bal);
       }
     });
 
@@ -156,6 +174,33 @@ export class MainPage {
       }
       this.prevActiveFlowTimer = current;
     });
+
+    // Surface work-hours lock reasons as a friendly nudge.
+    this.workLockListener = (ev: Event) => {
+      try {
+        const anyEv = ev as any;
+        const reason = String(anyEv?.detail?.reason || '').trim();
+        if (!reason) return;
+        this.companion.nudge('work_lock', reason, 'simple', { title: 'Bloqueado', autoCloseMs: 6500, minIntervalMs: 0 });
+      } catch {
+        // ignore
+      }
+    };
+    try {
+      window.addEventListener('work_lock', this.workLockListener as any);
+    } catch {
+      // ignore
+    }
+  }
+
+  ngOnDestroy(): void {
+    if (!this.workLockListener) return;
+    try {
+      window.removeEventListener('work_lock', this.workLockListener as any);
+    } catch {
+      // ignore
+    }
+    this.workLockListener = null;
   }
 
   protected setCompanionEnabled(enabled: boolean): void {
@@ -163,23 +208,11 @@ export class MainPage {
   }
 
   protected companionHelp(): void {
-    this.companion.speak(
-      'Eu posso:\n\n- Te lembrar do ritmo (quando você fica muito atrás)\n- Avisar quando o saldo tá distorcendo muito\n- Dar bronca antes de cair em Ociosidade involuntária (Time Tracker)\n\nSe eu estiver chato, desliga ali no switch 😅',
-      'complex',
-      { title: 'Noir', autoCloseMs: 12000 },
-    );
+    this.companion.showHelp();
   }
 
   protected companionTip(): void {
-    const k = this.state.assistantKpis();
-    const behind = k ? Number(k.quotaDelta) < 0 : false;
-    this.companion.speak(
-      behind
-        ? 'Dica rápida: recupera ritmo reduzindo variação. Faz 3 contas seguidas no “setup padrão”.'
-        : 'Dica rápida: consistência > velocidade. Padroniza início/meio/fim da conta.',
-      'simple',
-      { title: 'Dica', autoCloseMs: 7000 },
-    );
+    this.companion.showTip();
   }
 
 	protected readonly sidebarOpen = signal(false);
@@ -219,11 +252,6 @@ export class MainPage {
 
   protected readonly mainTab = signal<'accounts' | 'timeTracker'>('accounts');
 
-  protected readonly timeTrackerCodeInput = signal('');
-  protected readonly timeTrackerSaving = signal(false);
-  protected readonly timeTrackerSuccess = signal('');
-  protected readonly timeTrackerError = signal('');
-
   protected readonly assistantDetailsOpen = signal(false);
 
   protected readonly welcomeStage = signal<'intro' | 'form' | 'outro' | null>(null);
@@ -244,49 +272,6 @@ export class MainPage {
       await this.router.navigateByUrl('/auth');
     } catch {
       // ignore
-    }
-  }
-
-  protected async submitTimeTrackerCode(): Promise<void> {
-    this.timeTrackerSuccess.set('');
-    this.timeTrackerError.set('');
-
-    const code = String(this.timeTrackerCodeInput() || '').trim();
-    if (!code) {
-      this.timeTrackerError.set('Digite o código.');
-      return;
-    }
-
-    this.timeTrackerSaving.set(true);
-    try {
-      const ok = await this.profile.enableTimeTracker(code);
-      if (!ok) {
-        this.timeTrackerError.set('Código inválido.');
-        return;
-      }
-
-      this.timeTrackerCodeInput.set('');
-      this.timeTrackerSuccess.set('Modo Time Tracker ativado.');
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Falha ao validar código.';
-      this.timeTrackerError.set(msg);
-    } finally {
-      this.timeTrackerSaving.set(false);
-    }
-  }
-
-  protected async disableTimeTrackerMode(): Promise<void> {
-    this.timeTrackerSuccess.set('');
-    this.timeTrackerError.set('');
-    this.timeTrackerSaving.set(true);
-    try {
-      await this.profile.disableTimeTracker();
-      this.timeTrackerSuccess.set('Modo Time Tracker desativado.');
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Falha ao desativar.';
-      this.timeTrackerError.set(msg);
-    } finally {
-      this.timeTrackerSaving.set(false);
     }
   }
 
@@ -347,16 +332,106 @@ export class MainPage {
   protected readonly timeInput = signal('');
   protected readonly resumePausedContext = signal<{ key: string; entryId: string } | null>(null);
 
+  // Correction requests (user -> admin)
+  protected readonly correctionOpen = signal(false);
+  protected readonly correctionSelectedTxId = signal<string>('');
+  protected readonly correctionMessage = signal<string>('');
+  protected readonly correctionSending = signal(false);
+  protected readonly correctionError = signal<string>('');
+
+  protected readonly citrixConfigured = signal(false);
+  protected readonly citrixExtracting = signal(false);
+  protected readonly citrixSgss = signal('');
+  protected readonly citrixTipoEmpresa = signal('');
+  protected readonly citrixError = signal('');
+
+  private lastCitrixExtractAtMs = 0;
+
   protected readonly flowChoiceOpen = signal(false);
   protected readonly flowChoiceTitle = signal('');
   protected readonly flowChoiceText = signal('');
   protected readonly flowChoiceFinalizeLabel = signal('Finalizar');
+  protected readonly flowChoiceCloseLabel = signal('');
   protected readonly flowChoiceParalyzeLabel = signal('Paralisar');
   protected readonly flowChoiceCancelLabel = signal('Cancelar');
-  private flowChoiceHandler: ((choice: 'finalize' | 'paralyze' | 'cancel') => void) | null = null;
+  private flowChoiceHandler: ((choice: 'finalize' | 'close' | 'paralyze' | 'cancel') => void) | null = null;
 
   protected readonly balanceText = computed(() => formatSignedTime(this.state.balanceSeconds()));
   protected readonly transactions = computed(() => this.state.transactionsToday());
+
+  protected readonly requestableTransactions = computed(() => {
+    const list = this.visibleHistoryTransactions() || [];
+    return list.filter((t) => {
+      const type = String((t as any)?.type || '').trim().toLowerCase();
+      if (type === this.timeTrackerType) return false;
+      const id = String((t as any)?.id || '').trim();
+      return Boolean(id);
+    });
+  });
+
+  protected readonly correctionSelectedTx = computed<LegacyTransaction | null>(() => {
+    const id = String(this.correctionSelectedTxId() || '').trim();
+    if (!id) return null;
+    const list = this.requestableTransactions();
+    return (list || []).find((t) => String((t as any)?.id || '').trim() === id) || null;
+  });
+
+  protected openCorrectionRequest(): void {
+    this.correctionError.set('');
+    this.correctionMessage.set('');
+
+    const list = this.requestableTransactions();
+    const firstId = list?.length ? String((list[0] as any)?.id || '').trim() : '';
+    this.correctionSelectedTxId.set(firstId);
+    this.correctionOpen.set(true);
+    this.closeSidebar();
+  }
+
+  protected closeCorrectionRequest(): void {
+    this.correctionOpen.set(false);
+    this.correctionSending.set(false);
+  }
+
+  protected async submitCorrectionRequest(): Promise<void> {
+    if (this.correctionSending()) return;
+
+    const tx = this.correctionSelectedTx();
+    if (!tx) {
+      this.correctionError.set('Selecione uma conta.');
+      return;
+    }
+
+    const message = String(this.correctionMessage() || '').trim();
+    if (!message) {
+      this.correctionError.set('Explique o que você registrou errado e como corrigir.');
+      return;
+    }
+
+    this.correctionSending.set(true);
+    this.correctionError.set('');
+
+    try {
+      const res = await this.correctionRequests.createRequest({ tx, message });
+      if (!res.ok) {
+        this.correctionError.set(res.error || 'Falha ao enviar solicitação.');
+        return;
+      }
+
+      this.correctionOpen.set(false);
+      try {
+        // Desktop permission prompt is best-effort; the service will also do this on events.
+        void (window as any).Notification?.requestPermission?.();
+      } catch {
+        // ignore
+      }
+      this.companion.speak('Solicitação enviada para os admins. Assim que aprovarem ou negarem, você recebe uma notificação.', 'simple', {
+        title: 'Correção',
+        autoCloseMs: 6500,
+      });
+    } finally {
+      this.correctionSending.set(false);
+    }
+  }
 
   protected readonly workedSecondsToday = computed(() => {
     const list = this.transactions() || [];
@@ -389,6 +464,100 @@ export class MainPage {
     return formatDateTimeSaoPaulo(iso || ts) || ts;
   }
 
+  private txEndDateOrNull(t: LegacyTransaction): Date | null {
+    const iso = String((t as any)?.createdAtIso || '').trim();
+    const ts = String((t as any)?.timestamp || '').trim();
+    const raw = iso || ts;
+    if (!raw) return null;
+    const d = new Date(raw);
+    if (!Number.isFinite(d.getTime())) return null;
+    return d;
+  }
+
+  private txStartDateOrNull(t: LegacyTransaction): Date | null {
+    const end = this.txEndDateOrNull(t);
+    if (!end) return null;
+    const spent = Math.max(0, Math.floor(Number((t as any)?.timeSpent) || 0));
+    return new Date(end.getTime() - spent * 1000);
+  }
+
+  private formatTimeOnlySaoPaulo(input: Date | null): string {
+    if (!input || !Number.isFinite(input.getTime())) return '';
+    try {
+      return new Intl.DateTimeFormat('pt-BR', {
+        timeZone: SAO_PAULO_TZ,
+        hour: '2-digit',
+        minute: '2-digit',
+      }).format(input);
+    } catch {
+      // Fallback: local timezone
+      return input.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    }
+  }
+
+  protected txStartDateTimeLabel(t: LegacyTransaction): string {
+    const d = this.txStartDateOrNull(t);
+    return formatDateTimeSaoPaulo(d);
+  }
+
+  protected txEndDateTimeLabel(t: LegacyTransaction): string {
+    const d = this.txEndDateOrNull(t);
+    return formatDateTimeSaoPaulo(d);
+  }
+
+  protected txTimeRangeLabel(t: LegacyTransaction): string {
+    const start = this.txStartDateOrNull(t);
+    const end = this.txEndDateOrNull(t);
+    const startLabel = this.formatTimeOnlySaoPaulo(start);
+    const endLabel = this.formatTimeOnlySaoPaulo(end);
+    if (!startLabel && !endLabel) return this.whenText(t);
+    if (!startLabel) return `Fim ${endLabel}`;
+    if (!endLabel) return `Início ${startLabel}`;
+    return `${startLabel} → ${endLabel}`;
+  }
+
+  protected finishStatusLabel(status: string | null | undefined): string {
+    const s = String(status || '').trim().toLowerCase();
+    if (!s) return '';
+    if (s === 'concluida') return 'Concluída';
+    if (s === 'encerrada') return 'Encerrada';
+    if (s === 'paralisada') return 'Paralisada';
+    if (s === 'cancelar' || s === 'cancelada') return 'Cancelada';
+    return s;
+  }
+
+  protected sourceLabel(source: any): string {
+    const s = String(source || '').trim();
+    if (!s) return '';
+    if (s === 'flow') return 'Flow';
+    if (s === 'modal') return 'Manual';
+    return s;
+  }
+
+  protected txTypeBadgeClass(type: string): string {
+    const t = String(type || '').trim().toLowerCase();
+    if (t === 'time_tracker') return 'tx-badge--tt';
+    return 'tx-badge--acct';
+  }
+
+  protected statusToneClass(status: any): string {
+    const s = String(status || '').trim().toLowerCase();
+    if (!s) return '';
+
+    // Time Tracker / lunch states
+    if (s.includes('almoço')) return 'tone-tt';
+
+    // Working
+    if (s.includes('trabalhando')) return 'tone-ok';
+
+    // Day gating / end states
+    if (s.includes('não iniciado')) return 'tone-warn';
+    if (s.includes('finalizado')) return 'tone-warn';
+    if (s.includes('encerrado')) return 'tone-warn';
+
+    return '';
+  }
+
   protected readonly onboardingShiftStart = signal('');
   protected readonly onboardingLunchStart = signal('');
   protected readonly onboardingShowComplexa = signal(false);
@@ -406,6 +575,88 @@ export class MainPage {
     this.resumePausedContext.set(pausedEntry ? { key, entryId: resumeEntryId } : null);
 
     this.modalOpen.set(true);
+
+    // If configured, auto-capture+OCR Citrix fields when opening Conferência/Retorno.
+    void this.tryCitrixAutoExtract(action);
+  }
+
+  private async tryCitrixAutoExtract(action: AccountAction): Promise<void> {
+    const type = String(action?.type || '').trim();
+    if (type !== 'conferencia' && type !== 'retorno') return;
+
+    // Avoid spamming OCR if the user reopens quickly.
+    if (Date.now() - this.lastCitrixExtractAtMs < 2500) return;
+    this.lastCitrixExtractAtMs = Date.now();
+
+    const regions = this.storage.getCitrixCaptureRegionsOrNull();
+    this.citrixConfigured.set(Boolean(regions));
+    this.citrixError.set('');
+    this.citrixSgss.set('');
+    this.citrixTipoEmpresa.set('');
+
+    if (!regions) return;
+
+    this.citrixExtracting.set(true);
+    try {
+      const health = await this.citrixHelper.health();
+      if (!health.ok) {
+        this.citrixError.set('Helper do Citrix não encontrado. Rode o helper local para capturar a tela.');
+        return;
+      }
+
+      const screen = this.storage.getCitrixCaptureScreenIndexOrNull();
+      const cap = await this.citrixHelper.capture(screen);
+      if (!cap.ok || !cap.pngBase64) {
+        this.citrixError.set(String(cap.error || 'Falha ao capturar a tela.'));
+        return;
+      }
+
+      const ex = await this.citrixHelper.extract(cap.pngBase64, regions);
+      if (!ex.ok) {
+        this.citrixError.set(String(ex.error || 'Falha ao extrair (OCR).'));
+        return;
+      }
+
+      const sgss = String(ex.sgss || '').trim();
+      const tipo = String(ex.tipoEmpresa || '').trim();
+      this.citrixSgss.set(sgss);
+      this.citrixTipoEmpresa.set(tipo);
+      this.state.setPendingCitrixFields({ sgss, tipoEmpresa: tipo });
+
+      const text = [sgss, tipo].filter(Boolean).join('\n');
+      if (text) {
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch {
+          // Clipboard may be unavailable depending on browser context; still show values in UI.
+        }
+      } else {
+        this.citrixError.set('Não consegui ler SGSS/Tipo Empresa. Tente capturar de novo e/ou ajuste as caixas em Configurar Captura.');
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e || 'Falha');
+      this.citrixError.set(msg);
+    } finally {
+      this.citrixExtracting.set(false);
+    }
+  }
+
+  protected recaptureCitrix(): void {
+    const action = this.modalAction();
+    if (!action) return;
+    void this.tryCitrixAutoExtract(action);
+  }
+
+  protected async copyCitrixResults(): Promise<void> {
+    const sgss = String(this.citrixSgss() || '').trim();
+    const tipo = String(this.citrixTipoEmpresa() || '').trim();
+    const text = [sgss, tipo].filter(Boolean).join('\n');
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // ignore
+    }
   }
 
   protected openSidebar(): void {
@@ -446,8 +697,23 @@ export class MainPage {
   }
 
   protected exportEndDay(): void {
-    this.companion.sayFinishWorkDay('normal');
-    this.state.downloadEndDayExport();
+    // JSON export removed (no longer needed).
+    this.closeSidebar();
+  }
+
+  protected toggleWorkDayFromMainButton(): void {
+    const res = this.state.toggleWorkDay();
+    if (!res.ok) {
+      if (res.reason) alert(res.reason);
+      return;
+    }
+
+    if (res.action === 'ended') {
+      this.companion.sayFinishWorkDay('normal');
+    } else if (res.action === 'started') {
+      this.companion.sayWorkdayStarted();
+    }
+
     this.closeSidebar();
   }
 
@@ -462,9 +728,12 @@ export class MainPage {
     this.resumePausedContext.set(null);
   }
 
-  protected confirmModal(): void {
+  protected confirmModal(finishStatus: 'concluida' | 'encerrada' = 'concluida'): void {
     const action = this.modalAction();
     if (!action) return;
+
+    const typeNorm = String(action.type || '').trim().toLowerCase();
+    const isTimeTracker = typeNorm === this.timeTrackerType;
 
     const key = this.state.actionKey(action.item, action.type);
     const ctx = this.resumePausedContext();
@@ -486,6 +755,9 @@ export class MainPage {
       tma: action.tmaSeconds,
       timeSpent,
       timestamp: new Date().toISOString(),
+      sgss: String(this.citrixSgss() || '').trim() || undefined,
+      tipoEmpresa: String(this.citrixTipoEmpresa() || '').trim() || undefined,
+      finishStatus: !isTimeTracker ? finishStatus : undefined,
       source: 'modal',
       assistant: null,
     };
@@ -511,17 +783,24 @@ export class MainPage {
 
     const ctx = this.resumePausedContext();
     const ctxPaused = ctx && ctx.key === key ? this.state.getPausedEntryById(key, ctx.entryId) : null;
-    const existingPaused = ctxPaused
-      ? Math.max(0, Math.floor(Number(ctxPaused.accumulatedSeconds) || 0))
-      : this.state.getPausedSecondsForKey(key);
+    const existingPaused = ctxPaused ? Math.max(0, Math.floor(Number(ctxPaused.accumulatedSeconds) || 0)) : 0;
 
     const raw = this.timeInput().trim();
     const parsed = raw ? parseTimeToSeconds(raw) : null;
-    const seconds = parsed !== null ? existingPaused + parsed : existingPaused;
+    const nextSeconds = parsed !== null ? existingPaused + parsed : existingPaused;
 
-    if (!Number.isFinite(seconds) || seconds < 0) {
+    if (!Number.isFinite(nextSeconds) || nextSeconds < 0) {
       alert('Tempo inválido para paralisar. Use MM:SS, HH:MM:SS ou minutos.');
       return;
+    }
+
+    // If we're not updating a specific paused entry, we are creating a NEW paused entry.
+    // In that case the user must provide a time (Flow mode is the way to pause without typing).
+    if (!(ctx && ctx.key === key && ctx.entryId)) {
+      if (parsed === null || nextSeconds <= 0) {
+        alert('Para paralisar aqui, informe um tempo (ex.: 12:30). No Flow, o tempo pausa automaticamente.');
+        return;
+      }
     }
 
     if (ctx && ctx.key === key && ctx.entryId) {
@@ -529,14 +808,19 @@ export class MainPage {
         item: action.item,
         type: action.type,
         tma: action.tmaSeconds,
-        accumulatedSeconds: seconds,
+        accumulatedSeconds: nextSeconds,
         updatedAtIso: new Date().toISOString(),
       });
       if (!ok) {
-        this.state.setPausedWork(key, { item: action.item, type: action.type, tma: action.tmaSeconds, accumulatedSeconds: seconds });
+        this.state.setPausedWork(key, { item: action.item, type: action.type, tma: action.tmaSeconds, accumulatedSeconds: nextSeconds });
       }
     } else {
-      this.state.setPausedWork(key, { item: action.item, type: action.type, tma: action.tmaSeconds, accumulatedSeconds: seconds });
+      this.state.setPausedWork(key, {
+        item: action.item,
+        type: action.type,
+        tma: action.tmaSeconds,
+        accumulatedSeconds: Math.max(0, Math.floor(Number(parsed) || 0)),
+      });
     }
 
     this.closeModal();
@@ -738,6 +1022,20 @@ export class MainPage {
     void this.router.navigateByUrl('/report');
   }
 
+  protected goToCaptureSetup(ev?: Event): void {
+    try {
+      ev?.preventDefault?.();
+    } catch {
+      // ignore
+    }
+    try {
+      this.closeSidebar();
+    } catch {
+      // ignore
+    }
+    void this.router.navigateByUrl('/capture-setup');
+  }
+
   protected toggleLunchStyle(next: boolean): void {
     this.state.setLunchStyleEnabled(Boolean(next));
   }
@@ -788,10 +1086,16 @@ export class MainPage {
 
   protected isActionDisabled(action: AccountAction): boolean {
     const key = this.state.actionKey(action.item, action.type);
+    const activeKey = this.state.activeFlowKey();
+    if (!this.profile.isAdmin()) {
+      const locked = Boolean(this.state.workLockReason());
+      if (locked && activeKey !== key) return true;
+    }
     return this.state.isFlowActionDisabled(key);
   }
 
   protected clickAction(action: AccountAction): void {
+    void this.tryCitrixAutoExtract(action);
     if (!this.state.flowModeEnabled()) {
       this.openModal(action);
       return;
@@ -800,6 +1104,14 @@ export class MainPage {
   }
 
   protected resumePaused(entry: { key: string; entryId: string; item: string; type: string; tma: number }): void {
+    if (this.state.flowModeEnabled()) {
+      this.handleFlowTimer(
+        { item: entry.item, type: entry.type as any, tmaSeconds: entry.tma, label: '' },
+        { resumeEntryId: entry.entryId },
+      );
+      return;
+    }
+
     this.openModal({ item: entry.item, type: entry.type as any, tmaSeconds: entry.tma, label: '' }, { resumeEntryId: entry.entryId });
   }
 
@@ -811,22 +1123,24 @@ export class MainPage {
   protected closeFlowChoice(): void {
     this.flowChoiceOpen.set(false);
     this.flowChoiceHandler = null;
+    this.flowChoiceCloseLabel.set('');
   }
 
   private openFlowChoice(
-    cfg: { title: string; text: string; finalizeLabel: string; paralyzeLabel: string; cancelLabel: string },
-    handler: (choice: 'finalize' | 'paralyze' | 'cancel') => void,
+    cfg: { title: string; text: string; finalizeLabel: string; closeLabel?: string; paralyzeLabel: string; cancelLabel: string },
+    handler: (choice: 'finalize' | 'close' | 'paralyze' | 'cancel') => void,
   ): void {
     this.flowChoiceTitle.set(cfg.title);
     this.flowChoiceText.set(cfg.text);
     this.flowChoiceFinalizeLabel.set(cfg.finalizeLabel);
+    this.flowChoiceCloseLabel.set(String(cfg.closeLabel || '').trim());
     this.flowChoiceParalyzeLabel.set(cfg.paralyzeLabel);
     this.flowChoiceCancelLabel.set(cfg.cancelLabel);
     this.flowChoiceHandler = handler;
     this.flowChoiceOpen.set(true);
   }
 
-  protected chooseFlowChoice(choice: 'finalize' | 'paralyze' | 'cancel'): void {
+  protected chooseFlowChoice(choice: 'finalize' | 'close' | 'paralyze' | 'cancel'): void {
     const h = this.flowChoiceHandler;
     this.closeFlowChoice();
     try {
@@ -852,6 +1166,19 @@ export class MainPage {
   private maybeSpeakAccountFinalize(item: string, type: string, finalized: boolean, timeSpentSeconds?: number, tmaSeconds?: number): void {
     if (!finalized) return;
     if (String(type || '') === this.timeTrackerType) return;
+
+    if (this.state.sprintModeEnabled()) {
+      const spent = Number(timeSpentSeconds);
+      if (Number.isFinite(spent) && spent > 0) {
+        this.companion.saySprintFastAccount({
+          item: String(item || ''),
+          type: String(type || ''),
+          timeSpentSeconds: spent,
+        });
+      }
+      this.companion.sayAccountFinish(String(item || ''), String(type || ''));
+      return;
+    }
 
     const spent = Number(timeSpentSeconds);
     const tma = Number(tmaSeconds);
@@ -890,12 +1217,13 @@ export class MainPage {
         {
           title: 'Trocar de conta',
           text: `Timer atual:\n• ${activeLabel}\n\nPróxima conta:\n• ${nextLabel}\n\nEscolha o que fazer com o timer atual:`,
-          finalizeLabel: 'Finalizar e iniciar',
+          finalizeLabel: 'Concluir e iniciar',
+          closeLabel: 'Encerrar e iniciar',
           paralyzeLabel: 'Paralisar e iniciar',
           cancelLabel: 'Cancelar',
         },
         choice => {
-          if (choice !== 'finalize' && choice !== 'paralyze') return;
+          if (choice !== 'finalize' && choice !== 'close' && choice !== 'paralyze') return;
 
           try {
             const t = this.state.activeFlowTimer();
@@ -903,13 +1231,19 @@ export class MainPage {
               ? Math.max(0, Math.floor(Number((t as any)?.baseSeconds) || 0) + Math.max(0, Math.floor((Date.now() - Number((t as any)?.start)) / 1000)))
               : undefined;
             const tmaSeconds = t ? Math.max(0, Math.floor(Number((t as any)?.tma) || 0)) : undefined;
-            this.maybeSpeakTimeTrackerFinalize(String(t?.item || ''), String(t?.type || ''), choice === 'finalize', totalSeconds);
-            this.maybeSpeakAccountFinalize(String(t?.item || ''), String(t?.type || ''), choice === 'finalize', totalSeconds, tmaSeconds);
+            const isFinalizing = choice === 'finalize' || choice === 'close';
+            this.maybeSpeakTimeTrackerFinalize(String(t?.item || ''), String(t?.type || ''), isFinalizing, totalSeconds);
+            this.maybeSpeakAccountFinalize(String(t?.item || ''), String(t?.type || ''), isFinalizing, totalSeconds, tmaSeconds);
           } catch {
             // ignore
           }
 
-          this.state.stopFlowTimerForKey(activeKey, choice === 'finalize');
+          const isFinalizing = choice === 'finalize' || choice === 'close';
+          this.state.stopFlowTimerForKey(
+            activeKey,
+            isFinalizing,
+            isFinalizing ? { finishStatus: choice === 'close' ? 'encerrada' : 'concluida' } : undefined,
+          );
           this.handleFlowTimer(action, opts);
         },
       );
@@ -920,25 +1254,34 @@ export class MainPage {
     const forceNew = Boolean(opts?.forceNew);
 
     if (this.state.activeFlowTimer() && activeKey === key) {
+      const t = this.state.activeFlowTimer();
+      const totalSeconds = t
+        ? Math.max(0, Math.floor(Number((t as any)?.baseSeconds) || 0) + Math.max(0, Math.floor((Date.now() - Number((t as any)?.start)) / 1000)))
+        : undefined;
+      const tmaSeconds = t ? Math.max(0, Math.floor(Number((t as any)?.tma) || 0)) : undefined;
+      const elapsedLabel = totalSeconds == null ? '—' : formatSecondsToTime(totalSeconds);
+      const tmaLabel = this.state.sprintModeEnabled() || tmaSeconds == null ? '' : ` • TMA: ${formatSecondsToTime(tmaSeconds)}`;
+
       this.openFlowChoice(
         {
           title: 'Paralisar ou finalizar?',
-          text: `Conta:\n• ${action.item} • ${this.typeLabel(action.type)}\n\nFinalizar:\n• Salva no histórico\n\nParalisar:\n• Guarda o tempo para retomar depois`,
-          finalizeLabel: 'Finalizar',
+          text: `Conta:\n• ${action.item} • ${this.typeLabel(action.type)}\n\nTempo agora:\n• ${elapsedLabel}${tmaLabel}\n\nConcluir: salva como concluída\nEncerrar: salva como encerrada\nParalisar: guarda para retomar depois`,
+          finalizeLabel: 'Concluir',
+          closeLabel: 'Encerrar',
           paralyzeLabel: 'Paralisar',
-          cancelLabel: 'Continuar rodando',
+          cancelLabel: 'Continuar',
         },
         choice => {
-          if (choice !== 'finalize' && choice !== 'paralyze') return;
+          if (choice !== 'finalize' && choice !== 'close' && choice !== 'paralyze') return;
 
-          const t = this.state.activeFlowTimer();
-          const totalSeconds = t
-            ? Math.max(0, Math.floor(Number((t as any)?.baseSeconds) || 0) + Math.max(0, Math.floor((Date.now() - Number((t as any)?.start)) / 1000)))
-            : undefined;
-          const tmaSeconds = t ? Math.max(0, Math.floor(Number((t as any)?.tma) || 0)) : undefined;
-          this.maybeSpeakTimeTrackerFinalize(action.item, action.type, choice === 'finalize', totalSeconds);
-          this.maybeSpeakAccountFinalize(action.item, action.type, choice === 'finalize', totalSeconds, tmaSeconds);
-          this.state.stopFlowTimerForKey(key, choice === 'finalize');
+          const isFinalizing = choice === 'finalize' || choice === 'close';
+          this.maybeSpeakTimeTrackerFinalize(action.item, action.type, isFinalizing, totalSeconds);
+          this.maybeSpeakAccountFinalize(action.item, action.type, isFinalizing, totalSeconds, tmaSeconds);
+          this.state.stopFlowTimerForKey(
+            key,
+            isFinalizing,
+            isFinalizing ? { finishStatus: choice === 'close' ? 'encerrada' : 'concluida' } : undefined,
+          );
         },
       );
       return;

@@ -104,8 +104,6 @@ export class AuthService {
             user_id: data.user.id,
             username: u,
             is_admin: false,
-            time_tracker_enabled: false,
-            time_tracker_enabled_at: null,
             updated_at: new Date().toISOString(),
           });
         

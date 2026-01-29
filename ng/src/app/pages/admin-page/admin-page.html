@@ -27,20 +27,22 @@
     </div>
   </header>
 
-  <div class="admin-hint">
-    <span class="admin-pill">{{ selectedDayLabel() }}</span>
-    <label class="admin-field" style="margin-left:12px; display:inline-flex; align-items:center; gap:8px;">
-      <span class="admin-field-label" style="margin:0;">Dia</span>
-      <input
-        class="admin-input"
-        type="date"
-        [ngModel]="selectedDayYmd()"
-        (ngModelChange)="setSelectedDay($event)"
-        style="width:auto; min-width:160px;"
-      />
+  <div class="admin-toolbar">
+    <div class="admin-toolbar-left">
+      <span class="admin-pill">{{ selectedDayLabel() }}</span>
+
+      <label class="admin-day-field">
+        <span class="admin-field-label">Dia</span>
+        <input class="admin-input admin-input--date" type="date" [ngModel]="selectedDayYmd()" (ngModelChange)="setSelectedDay($event)" />
+      </label>
+
       <button class="admin-sort-btn" type="button" (click)="setSelectedDayToday()">Hoje</button>
-    </label>
-    <span class="admin-muted" style="margin-left:10px;">Atualizado: {{ asOfIso() | date:'HH:mm:ss' }}</span>
+    </div>
+
+    <div class="admin-toolbar-right">
+      <span class="admin-muted">Atualizado: {{ asOfIso() | date:'HH:mm:ss' }}</span>
+      <span class="admin-muted" *ngIf="loading()">Carregando…</span>
+    </div>
   </div>
 
   <div class="admin-error" *ngIf="errorText()">{{ errorText() }}</div>
@@ -79,10 +81,165 @@
 
     <div class="admin-sort">
       <span class="admin-muted">Ordenar:</span>
-      <button class="admin-sort-btn" type="button" (click)="setSort('units')">Unidades</button>
-      <button class="admin-sort-btn" type="button" (click)="setSort('accounts')">Contas</button>
-      <button class="admin-sort-btn" type="button" (click)="setSort('saldo')">Saldo</button>
-      <button class="admin-sort-btn" type="button" (click)="setSort('last')">Última</button>
+      <button
+        class="admin-sort-btn"
+        type="button"
+        (click)="setSort('units')"
+        [class.is-active]="sortKey() === 'units'"
+        [attr.aria-pressed]="sortKey() === 'units'"
+      >
+        Unidades <span class="admin-sort-arrow" *ngIf="sortKey() === 'units'">{{ sortDir() === 'asc' ? '↑' : '↓' }}</span>
+      </button>
+      <button
+        class="admin-sort-btn"
+        type="button"
+        (click)="setSort('accounts')"
+        [class.is-active]="sortKey() === 'accounts'"
+        [attr.aria-pressed]="sortKey() === 'accounts'"
+      >
+        Contas <span class="admin-sort-arrow" *ngIf="sortKey() === 'accounts'">{{ sortDir() === 'asc' ? '↑' : '↓' }}</span>
+      </button>
+      <button
+        class="admin-sort-btn"
+        type="button"
+        (click)="setSort('saldo')"
+        [class.is-active]="sortKey() === 'saldo'"
+        [attr.aria-pressed]="sortKey() === 'saldo'"
+      >
+        Saldo <span class="admin-sort-arrow" *ngIf="sortKey() === 'saldo'">{{ sortDir() === 'asc' ? '↑' : '↓' }}</span>
+      </button>
+      <button
+        class="admin-sort-btn"
+        type="button"
+        (click)="setSort('last')"
+        [class.is-active]="sortKey() === 'last'"
+        [attr.aria-pressed]="sortKey() === 'last'"
+      >
+        Última <span class="admin-sort-arrow" *ngIf="sortKey() === 'last'">{{ sortDir() === 'asc' ? '↑' : '↓' }}</span>
+      </button>
+    </div>
+  </section>
+
+  <section class="admin-liveboard">
+    <div class="admin-liveboard-head">
+      <div>
+        <div class="admin-liveboard-title">Timeline 24h</div>
+        <div class="admin-liveboard-sub">Visão ao vivo do dia (trabalho, TT e ociosidade) por usuário.</div>
+        <div class="admin-liveboard-periods" aria-hidden="true">
+          <span [class.is-active]="timelineDayPart() === 0">Madrugada</span>
+          <span [class.is-active]="timelineDayPart() === 1">Manhã</span>
+          <span [class.is-active]="timelineDayPart() === 2">Tarde</span>
+          <span [class.is-active]="timelineDayPart() === 3">Noite</span>
+        </div>
+      </div>
+
+      <div class="admin-liveboard-side">
+        <div class="admin-stock">
+          <div class="admin-stock-label">Estoque (contas)</div>
+          <div class="admin-stock-value">{{ inventoryRemaining() === null ? '—' : inventoryRemaining() }}</div>
+          <div class="admin-stock-editor">
+            <input
+              class="admin-input admin-stock-input"
+              type="number"
+              min="0"
+              step="1"
+              [ngModel]="inventoryDraft()"
+              (ngModelChange)="inventoryDraft.set($event)"
+              aria-label="Editar estoque"
+            />
+            <button class="admin-sort-btn" type="button" (click)="saveInventory()" [disabled]="inventorySaving()">
+              {{ inventorySaving() ? 'Salvando…' : 'Salvar' }}
+            </button>
+          </div>
+          <div class="admin-stock-sub" *ngIf="inventoryUpdatedAtIso()">Atualizado: {{ inventoryUpdatedAtIso() | date:'HH:mm' }}</div>
+          <div class="admin-stock-err" *ngIf="inventoryError()">{{ inventoryError() }}</div>
+        </div>
+
+        <div class="admin-liveboard-legend" aria-label="Legenda">
+          <span class="legend-dot work" title="Trabalho"></span>
+          <span class="legend-dot tt" title="Time Tracker"></span>
+          <span class="legend-dot idle" title="Ociosidade"></span>
+        </div>
+
+        <div class="admin-timeline-key" aria-label="Guia de cores da timeline">
+          <div class="admin-timeline-key-row">
+            <span class="admin-timeline-swatch sw-work" aria-hidden="true"></span>
+            <span>Trabalho (contas)</span>
+          </div>
+          <div class="admin-timeline-key-row">
+            <span class="admin-timeline-swatch sw-tt" aria-hidden="true"></span>
+            <span>Time Tracker</span>
+          </div>
+          <div class="admin-timeline-key-row">
+            <span class="admin-timeline-swatch sw-idle" aria-hidden="true"></span>
+            <span>Ociosidade involuntária</span>
+          </div>
+          <div class="admin-timeline-key-row">
+            <span class="admin-timeline-swatch sw-start" aria-hidden="true"></span>
+            <span>Início do dia</span>
+          </div>
+          <div class="admin-timeline-key-row">
+            <span class="admin-timeline-swatch sw-end" aria-hidden="true"></span>
+            <span>Fim do dia</span>
+          </div>
+          <div class="admin-timeline-key-row">
+            <span class="admin-timeline-swatch sw-now" aria-hidden="true"></span>
+            <span>Agora</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="admin-liveboard-axis" aria-hidden="true">
+      <span>00</span>
+      <span>06</span>
+      <span>12</span>
+      <span>18</span>
+      <span>24</span>
+    </div>
+
+    <div class="admin-liveboard-body">
+      <div class="admin-livelane" *ngFor="let r of rows()">
+        <div class="admin-livelane-name" [class.is-active]="isInProgress(r.userId)">
+          <span class="admin-livelane-dot" [class.on]="isInProgress(r.userId) || isRecentlyActive(r.lastTxAtIso)"></span>
+          <span class="admin-livelane-text">{{ r.username }}</span>
+        </div>
+
+        <div class="admin-livelane-track">
+          <span
+            class="admin-liveboard-now"
+            *ngIf="timelineNowPct() !== null"
+            [style.left.%]="timelineNowPct()!"
+            aria-hidden="true"
+          ></span>
+
+          <span
+            class="admin-liveboard-marker"
+            *ngFor="let m of timelineMarkers(r.userId)"
+            [class.marker-start]="m.kind === 'day_start'"
+            [class.marker-end]="m.kind === 'day_end'"
+            [style.left.%]="m.leftPct"
+            [title]="m.title"
+            aria-hidden="true"
+          ></span>
+
+          <span
+            class="admin-liveboard-seg"
+            *ngFor="let s of timelineSegments(r.userId)"
+            [class.seg-work]="s.kind === 'work'"
+            [class.seg-tt]="s.kind === 'tt'"
+            [class.seg-idle]="s.kind === 'idle'"
+            [class.is-active]="s.active"
+            [style.left.%]="s.leftPct"
+            [style.width.%]="s.widthPct"
+            [title]="s.title"
+          ></span>
+        </div>
+      </div>
+
+      <div class="admin-empty" *ngIf="!loading() && rows().length === 0">
+        Nenhum usuário encontrado.
+      </div>
     </div>
   </section>
 
@@ -94,14 +251,29 @@
         <div>Unidades</div>
         <div>Saldo (Gasto - TMA)</div>
         <div>Última conta</div>
+        <div class="admin-timeline-head">
+          <div class="admin-timeline-labels" aria-hidden="true">
+            <span>00</span>
+            <span>06</span>
+            <span>12</span>
+            <span>18</span>
+            <span>24</span>
+          </div>
+          <div class="admin-timeline-track" aria-hidden="true"></div>
+        </div>
       </div>
 
       <button class="admin-row admin-row--button" type="button" *ngFor="let r of rows()" (click)="openUser(r)">
         <div class="admin-user">
           <div class="admin-user-name">{{ r.username }}</div>
           <div class="admin-user-sub">
-            <span class="admin-dot" [class.on]="isRecentlyActive(r.lastTxAtIso)"></span>
-            <span>{{ isRecentlyActive(r.lastTxAtIso) ? 'Ativo' : '—' }}</span>
+            <span class="admin-dot" [class.on]="isInProgress(r.userId) || isRecentlyActive(r.lastTxAtIso)"></span>
+            <ng-container *ngIf="inProgressText(r.userId) as txt; else activeStatus">
+              <span>{{ txt }}</span>
+            </ng-container>
+            <ng-template #activeStatus>
+              <span>{{ isRecentlyActive(r.lastTxAtIso) ? 'Ativo' : '—' }}</span>
+            </ng-template>
           </div>
         </div>
         <div class="admin-num">{{ r.txCount }}</div>
@@ -110,6 +282,39 @@
           {{ formatDiff(r.diffSeconds) }}
         </div>
         <div class="admin-last">{{ formatLastSeen(r.lastTxAtIso) }}</div>
+
+        <div class="admin-timeline-cell">
+          <div class="admin-timeline-track">
+            <span
+              class="admin-timeline-now"
+              *ngIf="timelineNowPct() !== null"
+              [style.left.%]="timelineNowPct()!"
+              aria-hidden="true"
+            ></span>
+
+            <span
+              class="admin-timeline-marker"
+              *ngFor="let m of timelineMarkers(r.userId)"
+              [class.marker-start]="m.kind === 'day_start'"
+              [class.marker-end]="m.kind === 'day_end'"
+              [style.left.%]="m.leftPct"
+              [title]="m.title"
+              aria-hidden="true"
+            ></span>
+
+            <span
+              class="admin-timeline-seg"
+              *ngFor="let s of timelineSegments(r.userId)"
+              [class.seg-work]="s.kind === 'work'"
+              [class.seg-tt]="s.kind === 'tt'"
+              [class.seg-idle]="s.kind === 'idle'"
+              [class.is-active]="s.active"
+              [style.left.%]="s.leftPct"
+              [style.width.%]="s.widthPct"
+              [title]="s.title"
+            ></span>
+          </div>
+        </div>
       </button>
 
       <div class="admin-empty" *ngIf="!loading() && rows().length === 0">
@@ -156,7 +361,25 @@
       <button class="sidebar-action" type="button" (click)="toggleLive()">{{ liveEnabled() ? 'Ao vivo: ON' : 'Ao vivo: OFF' }}</button>
       <button class="sidebar-action" type="button" (click)="openBroadcastHistory()">Histórico</button>
       <button class="sidebar-action" type="button" (click)="openBroadcast()">Mensagem p/ todos</button>
+      <button class="sidebar-action" type="button" (click)="openCorrectionRequests()">Solicitações de correção</button>
       <button class="sidebar-action sidebar-action--danger" type="button" (click)="logout()">Sair</button>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">Modos</div>
+
+      <div class="sidebar-row">
+        <span>Sprint Mode</span>
+        <label class="switch" style="margin-bottom:0;">
+          <input
+            type="checkbox"
+            id="adminSidebarSprintModeToggle"
+            [checked]="appConfig.sprintModeEnabled()"
+            (change)="setSprintModeEnabled($any($event.target).checked)"
+          />
+          <span class="slider"></span>
+        </label>
+      </div>
     </div>
 
     <div class="sidebar-section">
@@ -174,12 +397,6 @@
           <span class="slider"></span>
         </label>
       </div>
-
-      <button class="sidebar-action" type="button" (click)="companion.showHelp()" [disabled]="companion.hidden()">O que eu faço?</button>
-      <button class="sidebar-action" type="button" (click)="companion.showTip()" [disabled]="companion.hidden()">Dica rápida</button>
-      <button class="sidebar-action" type="button" (click)="companion.showMotivation()" [disabled]="companion.hidden()">Motivação</button>
-      <button class="sidebar-action" type="button" (click)="companion.showTimeTrackerInfo()" [disabled]="companion.hidden()">Time Tracker</button>
-
     </div>
   </div>
 </aside>
@@ -297,6 +514,190 @@
       >
         {{ broadcastSending() ? 'Enviando…' : 'Enviar' }}
       </button>
+    </div>
+  </div>
+</div>
+
+<div class="admin-modal-overlay" *ngIf="correctionOpen()" (click)="closeCorrectionRequests()">
+  <div class="admin-modal admin-modal--history" (click)="$event.stopPropagation()">
+    <header class="admin-modal-head">
+      <div>
+        <div class="admin-modal-title">Solicitações de correção</div>
+        <div class="admin-modal-sub">
+          <span class="admin-muted">Aprove/rejeite e (se aprovar) aplique o patch na conta.</span>
+        </div>
+      </div>
+      <button class="admin-modal-close" type="button" (click)="closeCorrectionRequests()">✕</button>
+    </header>
+
+    <div class="admin-modal-scroll">
+      <div class="admin-actions" style="justify-content:flex-end; margin-bottom: 10px;">
+        <button class="sidebar-action" type="button" (click)="refreshCorrectionRequests()" [disabled]="correctionLoading()">
+          {{ correctionLoading() ? 'Carregando…' : 'Atualizar' }}
+        </button>
+      </div>
+
+      <div class="admin-error" *ngIf="correctionError()">{{ correctionError() }}</div>
+
+      <div class="corr-grid">
+        <div class="corr-list">
+          <div class="admin-empty" *ngIf="!correctionLoading() && correctionSortedRows().length === 0">
+            Nenhuma solicitação.
+          </div>
+
+          <button
+            class="corr-row"
+            type="button"
+            *ngFor="let r of correctionSortedRows()"
+            [class.is-selected]="selectedCorrectionId() === r.id"
+            (click)="selectCorrection(r)"
+          >
+            <div class="corr-row-top">
+              <div class="corr-row-title">
+                {{ r.userUsername || r.userId }}
+                <span class="admin-muted" *ngIf="r.createdAt"> • {{ r.createdAt | date:'dd/MM HH:mm' }}</span>
+              </div>
+              <span
+                class="corr-status"
+                [class.pending]="(r.status || '').toLowerCase() === 'pending'"
+                [class.approved]="(r.status || '').toLowerCase() === 'approved'"
+                [class.rejected]="(r.status || '').toLowerCase() === 'rejected'"
+              >
+                {{ correctionStatusLabel(r.status) }}
+              </span>
+            </div>
+
+            <div class="corr-row-msg">{{ r.userMessage }}</div>
+
+            <div class="corr-row-foot">
+              <span class="admin-muted" *ngIf="r.txSnapshot?.item">Conta: {{ r.txSnapshot?.item }}</span>
+              <span class="admin-muted" *ngIf="r.txSnapshot?.type"> • Tipo: {{ r.txSnapshot?.type }}</span>
+            </div>
+          </button>
+        </div>
+
+        <div class="corr-detail">
+          <div class="admin-empty" *ngIf="!selectedCorrection()">Selecione uma solicitação.</div>
+
+          <ng-container *ngIf="selectedCorrection() as sel">
+            <div class="corr-detail-title">Detalhes</div>
+            <div class="corr-detail-sub">
+              <span class="admin-pill" *ngIf="(sel.status || '').toLowerCase() === 'pending'">Pendente</span>
+              <span class="admin-pill" *ngIf="(sel.status || '').toLowerCase() === 'approved'">Aprovada</span>
+              <span class="admin-pill" *ngIf="(sel.status || '').toLowerCase() === 'rejected'">Rejeitada</span>
+              <span class="admin-muted" *ngIf="sel.adminUsername"> • Admin: {{ sel.adminUsername }}</span>
+              <span class="admin-muted" *ngIf="sel.resolvedAt"> • Resolvida: {{ sel.resolvedAt | date:'dd/MM HH:mm' }}</span>
+            </div>
+
+            <div class="corr-snapshot">
+              <div class="corr-snapshot-title">Snapshot (do usuário)</div>
+              <div class="corr-snapshot-grid">
+                <div><span class="admin-muted">Item</span><div class="corr-snapshot-value">{{ sel.txSnapshot?.item || '—' }}</div></div>
+                <div><span class="admin-muted">Tipo</span><div class="corr-snapshot-value">{{ sel.txSnapshot?.type || '—' }}</div></div>
+                <div><span class="admin-muted">TMA</span><div class="corr-snapshot-value">{{ sel.txSnapshot?.tma ?? '—' }}</div></div>
+                <div><span class="admin-muted">Gasto</span><div class="corr-snapshot-value">{{ sel.txSnapshot?.timeSpent ?? '—' }}</div></div>
+                <div><span class="admin-muted">Status</span><div class="corr-snapshot-value">{{ sel.txSnapshot?.finishStatus || '—' }}</div></div>
+                <div><span class="admin-muted">SGSS</span><div class="corr-snapshot-value">{{ sel.txSnapshot?.sgss || '—' }}</div></div>
+                <div><span class="admin-muted">Tipo Empresa</span><div class="corr-snapshot-value">{{ sel.txSnapshot?.tipoEmpresa || '—' }}</div></div>
+                <div><span class="admin-muted">Timestamp</span><div class="corr-snapshot-value">{{ sel.txSnapshot?.timestamp || sel.txSnapshot?.createdAtIso || '—' }}</div></div>
+              </div>
+            </div>
+
+            <div class="corr-editor">
+              <div class="corr-editor-title">Patch (o que vai ser aplicado)</div>
+
+              <div class="corr-form">
+                <label class="admin-field" style="min-width: unset;">
+                  <span class="admin-field-label">Item</span>
+                  <input class="admin-input" type="text" [ngModel]="corrDraftItem()" (ngModelChange)="corrDraftItem.set($event)" />
+                </label>
+
+                <label class="admin-field" style="min-width: unset;">
+                  <span class="admin-field-label">Tipo</span>
+                  <input class="admin-input" type="text" [ngModel]="corrDraftType()" (ngModelChange)="corrDraftType.set($event)" />
+                </label>
+
+                <label class="admin-field" style="min-width: unset;">
+                  <span class="admin-field-label">TMA</span>
+                  <input class="admin-input" type="text" placeholder="HH:MM:SS (ex: 00:18:30)" [ngModel]="corrDraftTma()" (ngModelChange)="corrDraftTma.set($event)" />
+                </label>
+
+                <label class="admin-field" style="min-width: unset;">
+                  <span class="admin-field-label">Gasto</span>
+                  <input class="admin-input" type="text" placeholder="HH:MM:SS (ex: 00:22:10)" [ngModel]="corrDraftTimeSpent()" (ngModelChange)="corrDraftTimeSpent.set($event)" />
+                </label>
+
+                <label class="admin-field" style="min-width: unset;">
+                  <span class="admin-field-label">Finish status</span>
+                  <input class="admin-input" type="text" [ngModel]="corrDraftFinishStatus()" (ngModelChange)="corrDraftFinishStatus.set($event)" placeholder="Ex: concluida" />
+                </label>
+
+                <label class="admin-field" style="min-width: unset; grid-column: 1 / -1;">
+                  <span class="admin-field-label">Nota do admin</span>
+                  <textarea
+                    class="admin-input"
+                    rows="4"
+                    placeholder="Explique o que foi feito (ou por que foi negado)."
+                    [ngModel]="corrDraftAdminNote()"
+                    (ngModelChange)="corrDraftAdminNote.set($event)"
+                  ></textarea>
+                </label>
+              </div>
+
+              <details class="admin-details corr-advanced">
+                <summary class="admin-details-summary">Avançado</summary>
+                <div class="corr-advanced-body">
+                  <div class="corr-form" style="margin-top:10px;">
+                    <label class="admin-field" style="min-width: unset;">
+                      <span class="admin-field-label">SGSS</span>
+                      <input class="admin-input" type="text" [ngModel]="corrDraftSgss()" (ngModelChange)="corrDraftSgss.set($event)" placeholder="Ex: 123456" />
+                    </label>
+
+                    <label class="admin-field" style="min-width: unset;">
+                      <span class="admin-field-label">Tipo Empresa</span>
+                      <input class="admin-input" type="text" [ngModel]="corrDraftTipoEmpresa()" (ngModelChange)="corrDraftTipoEmpresa.set($event)" placeholder="Ex: PJ" />
+                    </label>
+
+                    <label class="admin-field" style="min-width: unset;">
+                      <span class="admin-field-label">Timestamp (client)</span>
+                      <input class="admin-input" type="datetime-local" [ngModel]="corrDraftClientTimestampLocal()" (ngModelChange)="corrDraftClientTimestampLocal.set($event)" />
+                    </label>
+
+                    <label class="admin-field" style="min-width: unset;">
+                      <span class="admin-field-label">Início (meta)</span>
+                      <input class="admin-input" type="datetime-local" [ngModel]="corrDraftStartedAtLocal()" (ngModelChange)="corrDraftStartedAtLocal.set($event)" />
+                    </label>
+
+                    <label class="admin-field" style="min-width: unset;">
+                      <span class="admin-field-label">Fim (meta)</span>
+                      <input class="admin-input" type="datetime-local" [ngModel]="corrDraftEndedAtLocal()" (ngModelChange)="corrDraftEndedAtLocal.set($event)" />
+                    </label>
+                  </div>
+                </div>
+              </details>
+
+              <div class="corr-actions">
+                <button
+                  class="sidebar-action sidebar-action--danger"
+                  type="button"
+                  (click)="rejectCorrection()"
+                  [disabled]="correctionResolving() || (sel.status || '').toLowerCase() !== 'pending'"
+                >
+                  {{ correctionResolving() ? 'Processando…' : 'Rejeitar' }}
+                </button>
+                <button
+                  class="sidebar-action"
+                  type="button"
+                  (click)="approveCorrection()"
+                  [disabled]="correctionResolving() || (sel.status || '').toLowerCase() !== 'pending'"
+                >
+                  {{ correctionResolving() ? 'Processando…' : 'Aprovar e aplicar' }}
+                </button>
+              </div>
+            </div>
+          </ng-container>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -428,6 +829,8 @@
               <span class="admin-mini" [class.ok]="abs((t.time_spent||0)-(t.tma||0)) <= 600" [class.bad]="abs((t.time_spent||0)-(t.tma||0)) > 600">
                 Saldo: {{ formatDiff((t.time_spent||0)-(t.tma||0)) }}
               </span>
+              <span class="admin-mini" *ngIf="t.sgss">SGSS: {{ t.sgss }}</span>
+              <span class="admin-mini" *ngIf="t.tipo_empresa">Tipo: {{ t.tipo_empresa }}</span>
             </div>
           </div>
           <div class="admin-empty" *ngIf="selectedTx().length === 0">Sem registros hoje.</div>

@@ -17,6 +17,15 @@ create table if not exists public.profiles (
   updated_at timestamptz not null default now()
 );
 
+-- Time Tracker is always enabled (no code-gated unlock).
+-- Clean up any legacy gating artifacts if they exist in an older DB.
+drop function if exists public.enable_time_tracker(text);
+drop function if exists public.disable_time_tracker(text);
+drop function if exists public.disable_time_tracker();
+drop table if exists public.time_tracker_codes;
+alter table public.profiles drop column if exists time_tracker_enabled_at;
+alter table public.profiles drop column if exists time_tracker_enabled;
+
 -- Backwards compatible: if the table already existed, add the column.
 alter table public.profiles
   add column if not exists is_admin boolean not null default false;
@@ -24,21 +33,7 @@ alter table public.profiles
 create unique index if not exists profiles_username_unique
   on public.profiles (lower(username));
 
--- Time Tracker mode flag (driven by special codes)
-alter table public.profiles
-  add column if not exists time_tracker_enabled boolean not null default false;
 
-alter table public.profiles
-  add column if not exists time_tracker_enabled_at timestamptz;
-
--- Special codes (hashed server-side). Users never read this table.
-create table if not exists public.time_tracker_codes (
-  code_hash text primary key,
-  active boolean not null default true,
-  notes text,
-  assigned_user_id uuid references auth.users(id) on delete set null,
-  created_at timestamptz not null default now()
-);
 
 -- Transactions
 create table if not exists public.transactions (
@@ -48,11 +43,111 @@ create table if not exists public.transactions (
   type text not null,
   tma integer not null default 0,
   time_spent integer not null default 0,
+  sgss text,
+  tipo_empresa text,
+  finish_status text,
   source text,
   client_timestamp timestamptz,
   assistant jsonb,
   created_at timestamptz not null default now()
 );
+
+alter table public.transactions add column if not exists sgss text;
+alter table public.transactions add column if not exists tipo_empresa text;
+alter table public.transactions add column if not exists finish_status text;
+
+
+
+-- User presence (Flow timer in-progress)
+create table if not exists public.user_presence (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  active_key text,
+  active_item text,
+  active_type text,
+  active_started_at timestamptz,
+  active_base_seconds integer,
+  active_tma integer,
+  updated_at timestamptz not null default now()
+);
+
+
+
+-- Estoque (inventory): remaining accounts available.
+create table if not exists public.inventory (
+  id text primary key,
+  remaining integer not null default 0,
+  updated_at timestamptz not null default now()
+);
+
+insert into public.inventory (id, remaining)
+values ('accounts', 0)
+on conflict (id) do nothing;
+
+-- Apply a delta to the accounts inventory (SECURITY DEFINER so it works from triggers).
+create or replace function public.inventory_apply_accounts_delta(delta integer)
+returns void
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+begin
+  perform set_config('row_security', 'off', true);
+
+  insert into public.inventory (id, remaining, updated_at)
+  values ('accounts', 0, now())
+  on conflict (id) do nothing;
+
+  update public.inventory
+  set remaining = greatest(0, remaining + coalesce(delta, 0)),
+      updated_at = now()
+  where id = 'accounts';
+end;
+$$;
+
+-- Keep inventory in sync with account transactions.
+create or replace function public.transactions_adjust_inventory()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  old_is_account boolean;
+  new_is_account boolean;
+begin
+  perform set_config('row_security', 'off', true);
+
+  if tg_op = 'INSERT' then
+    new_is_account := lower(coalesce(new.type, '')) <> 'time_tracker';
+    if new_is_account then
+      perform public.inventory_apply_accounts_delta(-1);
+    end if;
+    return new;
+  elsif tg_op = 'DELETE' then
+    old_is_account := lower(coalesce(old.type, '')) <> 'time_tracker';
+    if old_is_account then
+      perform public.inventory_apply_accounts_delta(1);
+    end if;
+    return old;
+  elsif tg_op = 'UPDATE' then
+    old_is_account := lower(coalesce(old.type, '')) <> 'time_tracker';
+    new_is_account := lower(coalesce(new.type, '')) <> 'time_tracker';
+    if old_is_account and not new_is_account then
+      perform public.inventory_apply_accounts_delta(1);
+    elsif (not old_is_account) and new_is_account then
+      perform public.inventory_apply_accounts_delta(-1);
+    end if;
+    return new;
+  end if;
+
+  return coalesce(new, old);
+end;
+$$;
+
+drop trigger if exists transactions_adjust_inventory on public.transactions;
+create trigger transactions_adjust_inventory
+  after insert or update or delete on public.transactions
+  for each row execute function public.transactions_adjust_inventory();
 
 create index if not exists transactions_user_created_idx
   on public.transactions (user_id, created_at desc);
@@ -68,6 +163,17 @@ create table if not exists public.settings (
   lunch_style_enabled boolean not null default true,
   updated_at timestamptz not null default now()
 );
+
+-- Global app configuration (single row keyed by id='global')
+create table if not exists public.app_config (
+  id text primary key,
+  sprint_mode_enabled boolean not null default false,
+  updated_at timestamptz not null default now()
+);
+
+insert into public.app_config (id, sprint_mode_enabled)
+values ('global', false)
+on conflict (id) do nothing;
 
 -- Admin broadcasts (messages to all users via the companion)
 create table if not exists public.broadcasts (
@@ -123,7 +229,9 @@ create trigger broadcasts_set_sender
 alter table public.transactions enable row level security;
 alter table public.settings enable row level security;
 alter table public.profiles enable row level security;
-alter table public.time_tracker_codes enable row level security;
+alter table public.user_presence enable row level security;
+alter table public.inventory enable row level security;
+alter table public.app_config enable row level security;
 alter table public.broadcasts enable row level security;
 alter table public.broadcast_reads enable row level security;
 
@@ -147,6 +255,23 @@ $$;
 -- Safe: it only checks the current authenticated user.
 grant execute on function public.is_admin() to anon, authenticated;
 
+-- Inventory policies
+drop policy if exists "inventory_select_authenticated" on public.inventory;
+create policy "inventory_select_authenticated"
+  on public.inventory for select
+  using (auth.uid() is not null);
+
+drop policy if exists "inventory_insert_admin" on public.inventory;
+create policy "inventory_insert_admin"
+  on public.inventory for insert
+  with check (public.is_admin());
+
+drop policy if exists "inventory_update_admin" on public.inventory;
+create policy "inventory_update_admin"
+  on public.inventory for update
+  using (public.is_admin())
+  with check (public.is_admin());
+
 -- Profiles policies
 drop policy if exists "profiles_select_own" on public.profiles;
 create policy "profiles_select_own"
@@ -163,28 +288,6 @@ create policy "profiles_update_own"
   on public.profiles for update
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
-
--- Codes policies (admin-only)
-drop policy if exists "tt_codes_admin_select" on public.time_tracker_codes;
-create policy "tt_codes_admin_select"
-  on public.time_tracker_codes for select
-  using (public.is_admin());
-
-drop policy if exists "tt_codes_admin_insert" on public.time_tracker_codes;
-create policy "tt_codes_admin_insert"
-  on public.time_tracker_codes for insert
-  with check (public.is_admin());
-
-drop policy if exists "tt_codes_admin_update" on public.time_tracker_codes;
-create policy "tt_codes_admin_update"
-  on public.time_tracker_codes for update
-  using (public.is_admin())
-  with check (public.is_admin());
-
-drop policy if exists "tt_codes_admin_delete" on public.time_tracker_codes;
-create policy "tt_codes_admin_delete"
-  on public.time_tracker_codes for delete
-  using (public.is_admin());
 
 -- Create a profile row whenever a new auth user is created.
 -- We store the chosen username in raw_user_meta_data.username during signUp.
@@ -217,76 +320,7 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
--- Enable/disable Time Tracker mode by code.
--- Uses hashed codes stored in public.time_tracker_codes.
-create or replace function public.enable_time_tracker(input_code text)
-returns boolean
-language plpgsql
-security definer
-set search_path = public, extensions
-as $$
-declare
-  h text;
-  ok boolean;
-begin
-  if auth.uid() is null then
-    raise exception 'not_authenticated';
-  end if;
 
-  h := encode(
-    digest(
-      convert_to(lower(trim(coalesce(input_code, ''))), 'utf8'),
-      'sha256'::text
-    ),
-    'hex'
-  );
-  if coalesce(length(h), 0) = 0 then
-    return false;
-  end if;
-
-  select exists (
-    select 1
-    from public.time_tracker_codes c
-    where c.code_hash = h
-      and c.active = true
-      and (c.assigned_user_id is null or c.assigned_user_id = auth.uid())
-  )
-  into ok;
-
-  if not ok then
-    return false;
-  end if;
-
-  update public.profiles
-    set time_tracker_enabled = true,
-        time_tracker_enabled_at = now(),
-        updated_at = now()
-    where user_id = auth.uid();
-
-  return true;
-end;
-$$;
-
-create or replace function public.disable_time_tracker()
-returns void
-language plpgsql
-security definer
-set search_path = public, extensions
-as $$
-begin
-  if auth.uid() is null then
-    raise exception 'not_authenticated';
-  end if;
-
-  update public.profiles
-    set time_tracker_enabled = false,
-        updated_at = now()
-    where user_id = auth.uid();
-end;
-$$;
-
-grant execute on function public.enable_time_tracker(text) to authenticated;
-grant execute on function public.disable_time_tracker() to authenticated;
 
 -- Policies: transactions
 drop policy if exists "transactions_select_own" on public.transactions;
@@ -332,6 +366,29 @@ create policy "transactions_delete_admin_all"
   on public.transactions for delete
   using (public.is_admin());
 
+
+-- Policies: user_presence
+drop policy if exists "user_presence_select_own" on public.user_presence;
+create policy "user_presence_select_own"
+  on public.user_presence for select
+  using (auth.uid() = user_id);
+
+drop policy if exists "user_presence_select_admin_all" on public.user_presence;
+create policy "user_presence_select_admin_all"
+  on public.user_presence for select
+  using (public.is_admin());
+
+drop policy if exists "user_presence_insert_own" on public.user_presence;
+create policy "user_presence_insert_own"
+  on public.user_presence for insert
+  with check (auth.uid() = user_id);
+
+drop policy if exists "user_presence_update_own" on public.user_presence;
+create policy "user_presence_update_own"
+  on public.user_presence for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
 -- Policies: settings
 drop policy if exists "settings_select_own" on public.settings;
 create policy "settings_select_own"
@@ -358,6 +415,23 @@ drop policy if exists "settings_delete_own" on public.settings;
 create policy "settings_delete_own"
   on public.settings for delete
   using (auth.uid() = user_id);
+
+-- Policies: app_config (global)
+drop policy if exists "app_config_select_authenticated" on public.app_config;
+create policy "app_config_select_authenticated"
+  on public.app_config for select
+  using (auth.uid() is not null);
+
+drop policy if exists "app_config_insert_admin" on public.app_config;
+create policy "app_config_insert_admin"
+  on public.app_config for insert
+  with check (public.is_admin());
+
+drop policy if exists "app_config_update_admin" on public.app_config;
+create policy "app_config_update_admin"
+  on public.app_config for update
+  using (public.is_admin())
+  with check (public.is_admin());
 
 -- Policies: broadcasts
 drop policy if exists "broadcasts_select_authenticated" on public.broadcasts;
@@ -434,9 +508,39 @@ begin
     from pg_publication_tables
     where pubname = 'supabase_realtime'
       and schemaname = 'public'
+      and tablename = 'user_presence'
+  ) then
+    alter publication supabase_realtime add table public.user_presence;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
       and tablename = 'settings'
   ) then
     alter publication supabase_realtime add table public.settings;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'app_config'
+  ) then
+    alter publication supabase_realtime add table public.app_config;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'inventory'
+  ) then
+    alter publication supabase_realtime add table public.inventory;
   end if;
 
   if not exists (
@@ -465,14 +569,19 @@ end $$;
 grant usage on schema public to anon, authenticated;
 
 grant select on table public.profiles to authenticated;
--- Prevent users from self-enabling Time Tracker by editing profiles directly.
+-- Allow profile updates (limited columns) through the API.
 revoke update on table public.profiles from authenticated;
 grant update (username, updated_at) on table public.profiles to authenticated;
 
--- Users should not read or modify special codes from the API.
-revoke all on table public.time_tracker_codes from anon, authenticated;
 grant select, insert, update, delete on table public.transactions to authenticated;
+grant select, insert, update, delete on table public.user_presence to authenticated;
 grant select, insert, update, delete on table public.settings to authenticated;
+
+-- Inventory: everyone reads; only admins update (enforced by RLS).
+grant select, insert, update on table public.inventory to authenticated;
+
+-- Global config: everyone reads; only admins update (enforced by RLS).
+grant select, insert, update on table public.app_config to authenticated;
 
 -- Broadcasts: everyone reads, only admins can insert (enforced by RLS).
 grant select, insert on table public.broadcasts to authenticated;
