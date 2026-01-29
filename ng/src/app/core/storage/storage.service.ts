@@ -129,7 +129,10 @@ export class StorageService {
   }
 
   getFlowModeEnabled(): boolean {
-    return this.ls?.getItem(STORAGE_KEYS.flowMode) === '1';
+    const raw = this.ls?.getItem(STORAGE_KEYS.flowMode) ?? null;
+    // Default to Flow ON for new installs / clean storage.
+    if (raw === null) return true;
+    return raw === '1';
   }
 
   setFlowModeEnabled(enabled: boolean): void {
