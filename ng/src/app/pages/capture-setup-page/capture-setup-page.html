@@ -16,7 +16,7 @@
         <div class="v" [class.ok]="helperOk()" [class.err]="!helperOk()">
           {{ helperOk() ? 'Conectado' : 'Desconectado' }}
         </div>
-        <div class="muted" *ngIf="!helperOk()">Rode: <b>npm.cmd run helper:start</b> (em um terminal).</div>
+        <div class="muted" *ngIf="!helperOk()">Sem helper local: use <b>Capturar via navegador</b> (funciona no GitHub Pages).</div>
         <div class="errtext" *ngIf="helperError()">{{ helperError() }}</div>
       </div>
       <div class="row-actions">
@@ -32,7 +32,8 @@
         <button class="btn" type="button" (click)="checkHelper()" [disabled]="helperChecking()">
           {{ helperChecking() ? 'Testando…' : 'Testar conexão' }}
         </button>
-        <button class="btn primary" type="button" (click)="captureNow()">Capturar tela</button>
+        <button class="btn" type="button" (click)="captureViaBrowser()">Capturar via navegador</button>
+        <button class="btn primary" type="button" (click)="captureNow()" [disabled]="!helperOk()">Capturar via helper</button>
       </div>
     </div>
   </section>

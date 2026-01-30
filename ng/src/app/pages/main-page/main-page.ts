@@ -600,7 +600,7 @@ export class MainPage implements OnDestroy {
     try {
       const health = await this.citrixHelper.health();
       if (!health.ok) {
-        this.citrixError.set('Helper do Citrix não encontrado. Rode o helper local para capturar a tela.');
+        this.citrixError.set('Helper local do Citrix não encontrado. Use “Capturar (Navegador)” ou configure o helper local.');
         return;
       }
 
@@ -629,6 +629,61 @@ export class MainPage implements OnDestroy {
           await navigator.clipboard.writeText(text);
         } catch {
           // Clipboard may be unavailable depending on browser context; still show values in UI.
+        }
+      } else {
+        this.citrixError.set('Não consegui ler SGSS/Tipo Empresa. Tente capturar de novo e/ou ajuste as caixas em Configurar Captura.');
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e || 'Falha');
+      this.citrixError.set(msg);
+    } finally {
+      this.citrixExtracting.set(false);
+    }
+  }
+
+  protected async captureCitrixViaBrowser(): Promise<void> {
+    const action = this.modalAction();
+    if (!action) return;
+
+    const type = String(action?.type || '').trim();
+    if (type !== 'conferencia' && type !== 'retorno') return;
+
+    const regions = this.storage.getCitrixCaptureRegionsOrNull();
+    this.citrixConfigured.set(Boolean(regions));
+    this.citrixError.set('');
+    this.citrixSgss.set('');
+    this.citrixTipoEmpresa.set('');
+    if (!regions) {
+      this.citrixError.set('Não configurado. Use “Configurar Captura (Citrix)”.');
+      return;
+    }
+
+    this.citrixExtracting.set(true);
+    try {
+      const cap = await this.citrixHelper.captureBrowser();
+      if (!cap.ok || !cap.pngBase64) {
+        this.citrixError.set(String(cap.error || 'Falha ao capturar (navegador).'));
+        return;
+      }
+
+      const ex = await this.citrixHelper.extractBrowser(cap.pngBase64, regions);
+      if (!ex.ok) {
+        this.citrixError.set(String(ex.error || 'Falha ao extrair (OCR).'));
+        return;
+      }
+
+      const sgss = String(ex.sgss || '').trim();
+      const tipo = String(ex.tipoEmpresa || '').trim();
+      this.citrixSgss.set(sgss);
+      this.citrixTipoEmpresa.set(tipo);
+      this.state.setPendingCitrixFields({ sgss, tipoEmpresa: tipo });
+
+      const text = [sgss, tipo].filter(Boolean).join('\n');
+      if (text) {
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch {
+          // ignore
         }
       } else {
         this.citrixError.set('Não consegui ler SGSS/Tipo Empresa. Tente capturar de novo e/ou ajuste as caixas em Configurar Captura.');

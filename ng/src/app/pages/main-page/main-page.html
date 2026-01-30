@@ -412,6 +412,7 @@
 
 					<div class="citrix-actions" *ngIf="citrixConfigured()">
 						<button class="citrix-btn" type="button" (click)="recaptureCitrix()" [disabled]="citrixExtracting()">Re-capturar</button>
+						<button class="citrix-btn" type="button" (click)="captureCitrixViaBrowser()" [disabled]="citrixExtracting()">Capturar (Navegador)</button>
 						<button class="citrix-btn" type="button" (click)="copyCitrixResults()" [disabled]="!(citrixSgss() || citrixTipoEmpresa())">Copiar</button>
 					</div>
 				</div>

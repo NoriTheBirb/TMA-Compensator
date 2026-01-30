@@ -255,6 +255,28 @@ export class CaptureSetupPage {
     };
   }
 
+  protected async captureViaBrowser(): Promise<void> {
+    this.extractedSgss.set('');
+    this.extractedTipo.set('');
+    this.extractedError.set('');
+    this.helperError.set('');
+
+    const r = await this.helper.captureBrowser();
+    if (!r.ok || !r.pngBase64) {
+      this.helperError.set(String(r.error || 'Falha ao capturar (navegador).'));
+      return;
+    }
+
+    this.screenshotBase64.set(r.pngBase64);
+
+    // Start pick flow.
+    this.step.set('pick-sgss');
+    this.draftRegion.set(null);
+    this.dragStart = null;
+    this.dragging.set(false);
+    this.pickTarget = null;
+  }
+
   protected async testExtract(): Promise<void> {
     this.extractedError.set('');
     this.extractedSgss.set('');
@@ -269,16 +291,23 @@ export class CaptureSetupPage {
 
     this.extracting.set(true);
     try {
-      const r = await this.helper.extract(png, regions);
-      if (!r.ok) {
-        this.extractedError.set(r.error || 'Falha ao extrair.');
+      // Prefer local helper OCR when available; otherwise fall back to browser OCR.
+      const h = await this.helper.health();
+      this.helperOk.set(Boolean(h.ok));
+
+      const ex = h.ok
+        ? await this.helper.extract(png, regions)
+        : await this.helper.extractBrowser(png, regions);
+
+      if (!ex.ok) {
+        this.extractedError.set(String(ex.error || 'Falha ao extrair (OCR).'));
         return;
       }
 
-      this.extractedSgss.set(String(r.sgss || ''));
-      this.extractedTipo.set(String(r.tipoEmpresa || ''));
+      this.extractedSgss.set(String(ex.sgss || ''));
+      this.extractedTipo.set(String(ex.tipoEmpresa || ''));
 
-      if (!r.sgss && !r.tipoEmpresa) {
+      if (!ex.sgss && !ex.tipoEmpresa) {
         this.extractedError.set('Não consegui ler nada. Tente capturar de novo e marque as caixas mais justas.');
       }
     } finally {
