@@ -15,11 +15,10 @@ function formatErr(e: unknown): string {
 @Injectable({ providedIn: 'root' })
 export class BrowserScreenCaptureService {
   async capturePngBase64(): Promise<BrowserCaptureResponse> {
-    const getDisplayMedia = (navigator as any)?.mediaDevices?.getDisplayMedia as
-      | ((constraints: any) => Promise<MediaStream>)
-      | undefined;
+    const mediaDevices = (navigator as any)?.mediaDevices as MediaDevices | undefined;
+    const hasGetDisplayMedia = !!(mediaDevices && typeof (mediaDevices as any).getDisplayMedia === 'function');
 
-    if (!getDisplayMedia) {
+    if (!hasGetDisplayMedia) {
       return {
         ok: false,
         error: 'Seu navegador não suporta captura de tela (getDisplayMedia). Use Chrome/Edge.'
@@ -28,7 +27,8 @@ export class BrowserScreenCaptureService {
 
     let stream: MediaStream | null = null;
     try {
-      stream = await getDisplayMedia({
+      // Important: call as a method on mediaDevices to keep correct binding (avoids "Illegal invocation").
+      stream = await (mediaDevices as any).getDisplayMedia({
         video: {
           // Not supported everywhere; harmless when ignored.
           displaySurface: 'monitor',
@@ -36,13 +36,14 @@ export class BrowserScreenCaptureService {
         audio: false,
       });
 
-      const track = stream.getVideoTracks()?.[0];
+      const s = stream as MediaStream;
+      const track = s.getVideoTracks()?.[0];
       if (!track) return { ok: false, error: 'Nenhuma faixa de vídeo foi capturada.' };
 
       const video = document.createElement('video');
       video.playsInline = true;
       (video as any).muted = true;
-      (video as any).srcObject = stream;
+      (video as any).srcObject = s;
 
       // Some browsers need the play() call; others are fine with metadata only.
       try {
