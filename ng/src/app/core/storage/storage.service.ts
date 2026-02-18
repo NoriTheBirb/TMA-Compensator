@@ -184,13 +184,15 @@ export class StorageService {
       const item = String(parsed?.item || '');
       const type = String(parsed?.type || '');
       const tma = Math.max(0, Math.floor(Number(parsed?.tma) || 0));
+      const sgss = String(parsed?.sgss || '').trim() || undefined;
+      const tipoEmpresa = String(parsed?.tipoEmpresa || '').trim() || undefined;
       const savedAtIso = parsed?.savedAtIso ? String(parsed.savedAtIso) : undefined;
       const autoStopAtMsRaw = parsed?.autoStopAtMs;
       const autoStopAtMs = autoStopAtMsRaw === undefined || autoStopAtMsRaw === null ? undefined : Number(autoStopAtMsRaw);
       if (!key || !Number.isFinite(start) || start <= 0) return null;
       if (!item || !type) return null;
 
-      const out: ActiveFlowTimerPersisted = { key, start, baseSeconds, item, type, tma, savedAtIso };
+      const out: ActiveFlowTimerPersisted = { key, start, baseSeconds, item, type, tma, savedAtIso, sgss, tipoEmpresa };
       if (Number.isFinite(autoStopAtMs) && (autoStopAtMs as number) > 0) out.autoStopAtMs = autoStopAtMs as number;
       return out;
     } catch {
@@ -208,6 +210,11 @@ export class StorageService {
       tma: Math.max(0, Math.floor(Number(value?.tma) || 0)),
       savedAtIso: value?.savedAtIso ? String(value.savedAtIso) : new Date().toISOString(),
     };
+
+    const sgss = String((value as any)?.sgss || '').trim();
+    const tipoEmpresa = String((value as any)?.tipoEmpresa || '').trim();
+    if (sgss) payload.sgss = sgss;
+    if (tipoEmpresa) payload.tipoEmpresa = tipoEmpresa;
 
     const autoStopAtMs = value?.autoStopAtMs;
     if (Number.isFinite(Number(autoStopAtMs)) && Number(autoStopAtMs) > 0) {

@@ -330,10 +330,12 @@ export class CloudSyncService {
     const userId = this.auth.userId();
     if (!userId) {
       console.warn('[CloudSync] Cannot insert transaction: no userId');
+      this.notifyCloudError('Não foi possível salvar na nuvem', { message: 'Você não está logado. Faça login novamente.' });
       return null;
     }
     if (!this.sb.ready()) {
       console.warn('[CloudSync] Cannot insert transaction: Supabase not ready');
+      this.notifyCloudError('Não foi possível salvar na nuvem', { message: 'Supabase não está pronto (config/auth). Recarregue a página.' });
       return null;
     }
     if (this.isApplyingRemote()) {

@@ -72,6 +72,33 @@ export class AppStateService {
     };
   }
 
+  /**
+   * Flow mode: persist Citrix OCR fields on the currently active timer so they survive long timers
+   * (and are still available when finalizing).
+   */
+  setCitrixFieldsForActiveFlowTimer(key: string, fields: { sgss?: string; tipoEmpresa?: string } | null): void {
+    const k = String(key || '').trim();
+    if (!k) return;
+    if (!fields) return;
+
+    const sgss = String(fields.sgss || '').trim();
+    const tipoEmpresa = String(fields.tipoEmpresa || '').trim();
+    if (!sgss && !tipoEmpresa) return;
+
+    const t = this.activeFlowTimer();
+    if (!t || String(t.key || '') !== k) return;
+
+    const next: ActiveFlowTimerPersisted = {
+      ...t,
+      sgss: sgss || (t as any).sgss,
+      tipoEmpresa: tipoEmpresa || (t as any).tipoEmpresa,
+      savedAtIso: new Date().toISOString(),
+    };
+
+    this.activeFlowTimer.set(next);
+    this.storage.setActiveFlowTimer(next);
+  }
+
   private readonly validFlowKeys = new Set([
     ...DEFAULT_ACCOUNT_CATALOG.flatMap(g => (g.actions || []).map(a => this.actionKey((a as any).item, (a as any).type))),
     ...TIME_TRACKER_ITEMS.map(item => this.actionKey(item, TIME_TRACKER_TYPE)),
@@ -412,6 +439,10 @@ export class AppStateService {
   readonly needsOnboarding = signal<boolean>(false);
   readonly onboardingOpen = signal<boolean>(false);
 
+  // Citrix capture config: keep in memory so pages can read it even if localStorage is blocked.
+  readonly citrixCaptureRegions = signal<CitrixCaptureRegions | null>(null);
+  readonly citrixCaptureScreenIndex = signal<number | null>(null);
+
   constructor(
     private readonly storage: StorageService,
     private readonly injector: Injector,
@@ -601,6 +632,10 @@ export class AppStateService {
     this.showComplexa.set(this.storage.getShowComplexa());
     this.flowModeEnabled.set(this.storage.getFlowModeEnabled());
     this.lunchStyleEnabled.set(this.storage.getLunchStyleEnabled());
+
+    this.citrixCaptureRegions.set(this.storage.getCitrixCaptureRegionsOrNull());
+    this.citrixCaptureScreenIndex.set(this.storage.getCitrixCaptureScreenIndexOrNull());
+
     this.loadOrInitAnalytics();
 
     // Migrate paused-work storage to the normalized (queue) format.
@@ -818,7 +853,9 @@ export class AppStateService {
   }
 
   setCitrixCaptureRegions(value: CitrixCaptureRegions | null): void {
-    this.storage.setCitrixCaptureRegions(value);
+    const regions = value ? this.normalizeCitrixCaptureRegions(value) : null;
+    this.citrixCaptureRegions.set(regions);
+    this.storage.setCitrixCaptureRegions(regions);
 
     if (this.cloudEnabled()) {
       void this.cloud!
@@ -831,7 +868,9 @@ export class AppStateService {
   }
 
   setCitrixCaptureScreenIndex(value: number | null): void {
-    this.storage.setCitrixCaptureScreenIndex(value);
+    const screen = value === null || value === undefined ? null : Math.max(0, Math.floor(Number(value) || 0));
+    this.citrixCaptureScreenIndex.set(screen);
+    this.storage.setCitrixCaptureScreenIndex(screen);
 
     if (this.cloudEnabled()) {
       void this.cloud!
@@ -1047,6 +1086,27 @@ export class AppStateService {
       savedAtIso: new Date().toISOString(),
     };
 
+    // If Citrix OCR was captured right before starting (common on swap prompts), persist it on the timer.
+    try {
+      const typeNorm = String(payload.type || '').trim().toLowerCase();
+      const isAccount = typeNorm === 'conferencia' || typeNorm === 'retorno';
+      if (isAccount && this.pendingCitrixFields) {
+        const ageMs = Date.now() - Number(this.pendingCitrixFields.capturedAtMs || 0);
+        if (Number.isFinite(ageMs) && ageMs >= 0 && ageMs <= 2 * 60 * 1000) {
+          const pendingItem = String(this.pendingCitrixFields.item || '').trim();
+          const itemText = String(payload.item || '').trim();
+          if (!pendingItem || !itemText || pendingItem === itemText) {
+            const sgss = String(this.pendingCitrixFields.sgss || '').trim();
+            const tipoEmpresa = String(this.pendingCitrixFields.tipoEmpresa || '').trim();
+            if (sgss) (payload as any).sgss = sgss;
+            if (tipoEmpresa) (payload as any).tipoEmpresa = tipoEmpresa;
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+
     const autoStopAtMs = input?.autoStopAtMs;
     if (Number.isFinite(Number(autoStopAtMs)) && Number(autoStopAtMs) > 0) {
       payload.autoStopAtMs = Number(autoStopAtMs);
@@ -1074,6 +1134,8 @@ export class AppStateService {
     const item = String(t.item || '');
     const type = String(t.type || '');
     const tma = Math.max(0, Math.floor(Number(t.tma) || 0));
+    const sgss = String((t as any)?.sgss || '').trim() || undefined;
+    const tipoEmpresa = String((t as any)?.tipoEmpresa || '').trim() || undefined;
 
     this.activeFlowTimer.set(null);
     this.storage.clearActiveFlowTimer();
@@ -1091,6 +1153,8 @@ export class AppStateService {
         finishStatus: opts?.finishStatus,
         timestamp: new Date().toISOString(),
         source: 'flow',
+        sgss,
+        tipoEmpresa,
         assistant: null,
       });
     } else {
@@ -1190,11 +1254,14 @@ export class AppStateService {
     // Citrix capture config (optional; only present if DB column exists).
     if (row.citrix_capture_regions !== undefined) {
       const regions = this.normalizeCitrixCaptureRegions(row.citrix_capture_regions);
+      this.citrixCaptureRegions.set(regions);
       this.storage.setCitrixCaptureRegions(regions);
     }
     if (row.citrix_capture_screen !== undefined) {
       const n = Number(row.citrix_capture_screen);
       const screen = Number.isFinite(n) && n >= 0 ? Math.floor(n) : null;
+
+      this.citrixCaptureScreenIndex.set(screen);
       this.storage.setCitrixCaptureScreenIndex(screen);
     }
 
@@ -1433,8 +1500,9 @@ export class AppStateService {
       showComplexa: Boolean(this.showComplexa()),
       darkThemeEnabled: Boolean(this.darkThemeEnabled()),
       lunchStyleEnabled: Boolean(this.lunchStyleEnabled()),
-      citrixCaptureRegions: this.storage.getCitrixCaptureRegionsOrNull(),
-      citrixCaptureScreenIndex: this.storage.getCitrixCaptureScreenIndexOrNull(),
+      // Export from in-memory state so cloud saving works even when localStorage is blocked.
+      citrixCaptureRegions: this.citrixCaptureRegions(),
+      citrixCaptureScreenIndex: this.citrixCaptureScreenIndex(),
     };
   }
 

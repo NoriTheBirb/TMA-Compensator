@@ -353,8 +353,9 @@ export class MainPage implements OnDestroy {
   protected readonly flowChoiceFinalizeLabel = signal('Finalizar');
   protected readonly flowChoiceCloseLabel = signal('');
   protected readonly flowChoiceParalyzeLabel = signal('Paralisar');
+  protected readonly flowChoicePendencyLabel = signal('');
   protected readonly flowChoiceCancelLabel = signal('Cancelar');
-  private flowChoiceHandler: ((choice: 'finalize' | 'close' | 'paralyze' | 'cancel') => void) | null = null;
+  private flowChoiceHandler: ((choice: 'finalize' | 'close' | 'paralyze' | 'pendency' | 'cancel') => void) | null = null;
 
   protected readonly balanceText = computed(() => formatSignedTime(this.state.balanceSeconds()));
   protected readonly transactions = computed(() => this.state.transactionsToday());
@@ -522,6 +523,7 @@ export class MainPage implements OnDestroy {
     if (s === 'concluida') return 'Concluída';
     if (s === 'encerrada') return 'Encerrada';
     if (s === 'paralisada') return 'Paralisada';
+    if (s === 'pendenciada') return 'Pendenciada';
     if (s === 'cancelar' || s === 'cancelada') return 'Cancelada';
     return s;
   }
@@ -581,14 +583,14 @@ export class MainPage implements OnDestroy {
   }
 
   private async tryCitrixAutoExtract(action: AccountAction): Promise<void> {
-    const type = String(action?.type || '').trim();
+    const type = String(action?.type || '').trim().toLowerCase();
     if (type !== 'conferencia' && type !== 'retorno') return;
 
     // Avoid spamming OCR if the user reopens quickly.
     if (Date.now() - this.lastCitrixExtractAtMs < 2500) return;
     this.lastCitrixExtractAtMs = Date.now();
 
-    const regions = this.storage.getCitrixCaptureRegionsOrNull();
+    const regions = this.state.citrixCaptureRegions();
     this.citrixConfigured.set(Boolean(regions));
     this.citrixError.set('');
     this.citrixSgss.set('');
@@ -596,32 +598,61 @@ export class MainPage implements OnDestroy {
 
     if (!regions) return;
 
+    const key = this.state.actionKey(action.item, action.type);
+    const preferBrowser = this.shouldAutoCaptureCitrixViaBrowser();
+
     this.citrixExtracting.set(true);
     try {
-      const health = await this.citrixHelper.health();
-      if (!health.ok) {
-        this.citrixError.set('Helper local do Citrix não encontrado. Use “Capturar (Navegador)” ou configure o helper local.');
-        return;
-      }
+      let pngBase64 = '';
+      let sgss = '';
+      let tipo = '';
 
-      const screen = this.storage.getCitrixCaptureScreenIndexOrNull();
-      const cap = await this.citrixHelper.capture(screen);
-      if (!cap.ok || !cap.pngBase64) {
-        this.citrixError.set(String(cap.error || 'Falha ao capturar a tela.'));
-        return;
-      }
+      if (preferBrowser) {
+        // IMPORTANT: browser capture must be started from the click user gesture.
+        // Avoid awaiting any helper health checks before calling getDisplayMedia.
+        const cap = await this.citrixHelper.captureBrowser();
+        if (!cap.ok || !cap.pngBase64) {
+          this.citrixError.set(String(cap.error || 'Falha ao capturar (navegador).'));
+          return;
+        }
+        pngBase64 = cap.pngBase64;
 
-      const ex = await this.citrixHelper.extract(cap.pngBase64, regions);
-      if (!ex.ok) {
-        this.citrixError.set(String(ex.error || 'Falha ao extrair (OCR).'));
-        return;
-      }
+        const ex = await this.citrixHelper.extractBrowser(pngBase64, regions);
+        if (!ex.ok) {
+          this.citrixError.set(String(ex.error || 'Falha ao extrair (OCR).'));
+          return;
+        }
 
-      const sgss = String(ex.sgss || '').trim();
-      const tipo = String(ex.tipoEmpresa || '').trim();
+        sgss = String(ex.sgss || '').trim();
+        tipo = String(ex.tipoEmpresa || '').trim();
+      } else {
+        const health = await this.citrixHelper.health();
+        if (!health.ok) {
+          this.citrixError.set('Helper local do Citrix não encontrado. Use “Capturar (Navegador)” ou configure o helper local.');
+          return;
+        }
+
+        const screen = this.state.citrixCaptureScreenIndex();
+        const cap = await this.citrixHelper.capture(screen);
+        if (!cap.ok || !cap.pngBase64) {
+          this.citrixError.set(String(cap.error || 'Falha ao capturar a tela.'));
+          return;
+        }
+        pngBase64 = cap.pngBase64;
+
+        const ex = await this.citrixHelper.extract(pngBase64, regions);
+        if (!ex.ok) {
+          this.citrixError.set(String(ex.error || 'Falha ao extrair (OCR).'));
+          return;
+        }
+
+        sgss = String(ex.sgss || '').trim();
+        tipo = String(ex.tipoEmpresa || '').trim();
+      }
       this.citrixSgss.set(sgss);
       this.citrixTipoEmpresa.set(tipo);
       this.state.setPendingCitrixFields({ sgss, tipoEmpresa: tipo }, { item: action.item });
+      this.state.setCitrixFieldsForActiveFlowTimer(key, { sgss, tipoEmpresa: tipo });
 
       const text = [sgss, tipo].filter(Boolean).join('\n');
       if (text) {
@@ -641,6 +672,22 @@ export class MainPage implements OnDestroy {
     }
   }
 
+  private shouldAutoCaptureCitrixViaBrowser(): boolean {
+    // Prefer browser capture when available.
+    // This works both locally and on hosted sites; it also avoids depending on the optional localhost helper.
+    // Browser capture requires secure context and must be started from a user gesture.
+    try {
+      const md = (navigator as any)?.mediaDevices;
+      const has = !!(md && typeof md.getDisplayMedia === 'function');
+      if (!has) return false;
+      if (!window.isSecureContext) return false;
+
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   protected async captureCitrixViaBrowser(): Promise<void> {
     const action = this.modalAction();
     if (!action) return;
@@ -648,7 +695,7 @@ export class MainPage implements OnDestroy {
     const type = String(action?.type || '').trim();
     if (type !== 'conferencia' && type !== 'retorno') return;
 
-    const regions = this.storage.getCitrixCaptureRegionsOrNull();
+    const regions = this.state.citrixCaptureRegions();
     this.citrixConfigured.set(Boolean(regions));
     this.citrixError.set('');
     this.citrixSgss.set('');
@@ -677,6 +724,7 @@ export class MainPage implements OnDestroy {
       this.citrixSgss.set(sgss);
       this.citrixTipoEmpresa.set(tipo);
       this.state.setPendingCitrixFields({ sgss, tipoEmpresa: tipo }, { item: action.item });
+      this.state.setCitrixFieldsForActiveFlowTimer(this.state.actionKey(action.item, action.type), { sgss, tipoEmpresa: tipo });
 
       const text = [sgss, tipo].filter(Boolean).join('\n');
       if (text) {
@@ -783,7 +831,7 @@ export class MainPage implements OnDestroy {
     this.resumePausedContext.set(null);
   }
 
-  protected confirmModal(finishStatus: 'concluida' | 'encerrada' = 'concluida'): void {
+  protected confirmModal(finishStatus: 'concluida' | 'encerrada' | 'pendenciada' = 'concluida'): void {
     const action = this.modalAction();
     if (!action) return;
 
@@ -1182,20 +1230,21 @@ export class MainPage implements OnDestroy {
   }
 
   private openFlowChoice(
-    cfg: { title: string; text: string; finalizeLabel: string; closeLabel?: string; paralyzeLabel: string; cancelLabel: string },
-    handler: (choice: 'finalize' | 'close' | 'paralyze' | 'cancel') => void,
+    cfg: { title: string; text: string; finalizeLabel: string; closeLabel?: string; paralyzeLabel: string; pendencyLabel?: string; cancelLabel: string },
+    handler: (choice: 'finalize' | 'close' | 'paralyze' | 'pendency' | 'cancel') => void,
   ): void {
     this.flowChoiceTitle.set(cfg.title);
     this.flowChoiceText.set(cfg.text);
     this.flowChoiceFinalizeLabel.set(cfg.finalizeLabel);
     this.flowChoiceCloseLabel.set(String(cfg.closeLabel || '').trim());
     this.flowChoiceParalyzeLabel.set(cfg.paralyzeLabel);
+    this.flowChoicePendencyLabel.set(String(cfg.pendencyLabel || '').trim());
     this.flowChoiceCancelLabel.set(cfg.cancelLabel);
     this.flowChoiceHandler = handler;
     this.flowChoiceOpen.set(true);
   }
 
-  protected chooseFlowChoice(choice: 'finalize' | 'close' | 'paralyze' | 'cancel'): void {
+  protected chooseFlowChoice(choice: 'finalize' | 'close' | 'paralyze' | 'pendency' | 'cancel'): void {
     const h = this.flowChoiceHandler;
     this.closeFlowChoice();
     try {
@@ -1320,22 +1369,25 @@ export class MainPage implements OnDestroy {
       this.openFlowChoice(
         {
           title: 'Paralisar ou finalizar?',
-          text: `Conta:\n• ${action.item} • ${this.typeLabel(action.type)}\n\nTempo agora:\n• ${elapsedLabel}${tmaLabel}\n\nConcluir: salva como concluída\nEncerrar: salva como encerrada\nParalisar: guarda para retomar depois`,
+          text: `Conta:\n• ${action.item} • ${this.typeLabel(action.type)}\n\nTempo agora:\n• ${elapsedLabel}${tmaLabel}\n\nConcluir: salva como concluída\nEncerrar: salva como encerrada\nPendenciar: salva como pendenciada\nParalisar: guarda para retomar depois`,
           finalizeLabel: 'Concluir',
           closeLabel: 'Encerrar',
           paralyzeLabel: 'Paralisar',
+          pendencyLabel: 'Pendenciar',
           cancelLabel: 'Continuar',
         },
         choice => {
-          if (choice !== 'finalize' && choice !== 'close' && choice !== 'paralyze') return;
+          if (choice !== 'finalize' && choice !== 'close' && choice !== 'pendency' && choice !== 'paralyze') return;
 
-          const isFinalizing = choice === 'finalize' || choice === 'close';
+          const isFinalizing = choice === 'finalize' || choice === 'close' || choice === 'pendency';
           this.maybeSpeakTimeTrackerFinalize(action.item, action.type, isFinalizing, totalSeconds);
           this.maybeSpeakAccountFinalize(action.item, action.type, isFinalizing, totalSeconds, tmaSeconds);
           this.state.stopFlowTimerForKey(
             key,
             isFinalizing,
-            isFinalizing ? { finishStatus: choice === 'close' ? 'encerrada' : 'concluida' } : undefined,
+            isFinalizing
+              ? { finishStatus: choice === 'close' ? 'encerrada' : choice === 'pendency' ? 'pendenciada' : 'concluida' }
+              : undefined,
           );
         },
       );

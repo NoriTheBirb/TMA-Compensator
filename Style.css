@@ -1672,6 +1672,23 @@ body:not(.welcome-lock) .container > *:not(#lunchModal) {
     font-size: 0.95em;
 }
 
+.btn-pendency {
+    padding: 10px 20px;
+    border: 1px solid color-mix(in oklab, var(--accent) 45%, var(--border));
+    border-radius: 6px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 0.95em;
+    background: color-mix(in oklab, var(--accent) 12%, transparent);
+    color: var(--text);
+}
+
+.btn-pendency:hover {
+    filter: brightness(1.04);
+    transform: translateY(-1px);
+}
+
 .btn-paralyze {
     padding: 10px 20px;
     border: 1px solid color-mix(in oklab, var(--warn) 55%, var(--border));
@@ -1883,6 +1900,7 @@ body:not(.welcome-lock) .container > *:not(#lunchModal) {
 
 .flow-choice-cancel,
 .flow-choice-paralyze,
+.flow-choice-pendency,
 .flow-choice-close,
 .flow-choice-finalize {
     border: 1px solid var(--border);
@@ -1892,6 +1910,10 @@ body:not(.welcome-lock) .container > *:not(#lunchModal) {
     border-radius: 12px;
     cursor: pointer;
     font-weight: 800;
+}
+
+.flow-choice-pendency {
+    border-color: color-mix(in oklab, var(--accent) 55%, var(--border));
 }
 
 .flow-choice-paralyze {
@@ -1908,6 +1930,7 @@ body:not(.welcome-lock) .container > *:not(#lunchModal) {
 
 .flow-choice-cancel:hover,
 .flow-choice-paralyze:hover,
+.flow-choice-pendency:hover,
 .flow-choice-close:hover,
 .flow-choice-finalize:hover {
     filter: brightness(1.04);

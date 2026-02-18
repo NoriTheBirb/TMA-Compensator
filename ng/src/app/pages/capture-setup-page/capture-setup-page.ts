@@ -64,10 +64,10 @@ export class CaptureSetupPage {
     private readonly storage: StorageService,
     private readonly state: AppStateService,
   ) {
-    const prev = this.storage.getCitrixCaptureRegionsOrNull();
+    const prev = this.state.citrixCaptureRegions() ?? this.storage.getCitrixCaptureRegionsOrNull();
     if (prev) this.regions.set(prev);
 
-    const prevScreen = this.storage.getCitrixCaptureScreenIndexOrNull();
+    const prevScreen = this.state.citrixCaptureScreenIndex() ?? this.storage.getCitrixCaptureScreenIndexOrNull();
     if (prevScreen !== null) this.selectedScreenIndex.set(prevScreen);
 
     // Best-effort initial populate.

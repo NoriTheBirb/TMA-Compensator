@@ -418,8 +418,9 @@
 				</div>
 			</div>
 			<div class="modal-actions">
-				<button class="btn-cancel" type="button" (click)="closeModal()">Cancelar</button>
+				<button class="btn-cancel" type="button" (click)="closeModal()">Continuar</button>
 				<button class="btn-paralyze" type="button" (click)="paralyzeFromModal()">Paralisar</button>
+				<button class="btn-pendency" type="button" (click)="confirmModal('pendenciada')">Pendenciar</button>
 				<button class="btn-close" type="button" (click)="confirmModal('encerrada')">Encerrar</button>
 				<button class="btn-confirm" type="button" (click)="confirmModal('concluida')">Concluir</button>
 			</div>
@@ -530,6 +531,7 @@
 			<div class="modal-actions">
 				<button class="flow-choice-cancel" type="button" (click)="chooseFlowChoice('cancel')">{{ flowChoiceCancelLabel() }}</button>
 				<button class="flow-choice-paralyze" type="button" (click)="chooseFlowChoice('paralyze')">{{ flowChoiceParalyzeLabel() }}</button>
+				<button *ngIf="flowChoicePendencyLabel()" class="flow-choice-pendency" type="button" (click)="chooseFlowChoice('pendency')">{{ flowChoicePendencyLabel() }}</button>
 				<button *ngIf="flowChoiceCloseLabel()" class="flow-choice-close" type="button" (click)="chooseFlowChoice('close')">{{ flowChoiceCloseLabel() }}</button>
 				<button class="flow-choice-finalize" type="button" (click)="chooseFlowChoice('finalize')">{{ flowChoiceFinalizeLabel() }}</button>
 			</div>

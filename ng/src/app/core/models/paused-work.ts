@@ -18,6 +18,10 @@ export interface ActiveFlowTimerPersisted {
   tma: number;
   savedAtIso?: string;
 
+  // Optional Citrix fields captured at start (Flow mode).
+  sgss?: string;
+  tipoEmpresa?: string;
+
   // Optional automation (e.g. Almoço auto-stop after 1 hour)
   autoStopAtMs?: number;
 }
