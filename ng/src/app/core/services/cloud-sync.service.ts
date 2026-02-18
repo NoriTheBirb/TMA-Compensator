@@ -44,6 +44,8 @@ type DbSettingsRow = {
   show_complexa: boolean;
   dark_theme_enabled: boolean;
   lunch_style_enabled: boolean;
+  citrix_capture_regions?: any | null;
+  citrix_capture_screen?: number | null;
   updated_at: string;
 };
 
@@ -265,6 +267,8 @@ export class CloudSyncService {
     showComplexa: boolean;
     darkThemeEnabled: boolean;
     lunchStyleEnabled: boolean;
+    citrixCaptureRegions: any | null;
+    citrixCaptureScreenIndex: number | null;
   }): Promise<void> {
     const userId = this.auth.userId();
     if (!userId) {
@@ -279,8 +283,7 @@ export class CloudSyncService {
       return;
     }
 
-    try {
-      const { error } = await this.sb.supabase.from('settings').upsert({
+    const baseRow: any = {
         user_id: userId,
         shift_start_seconds: payload.shiftStartSeconds,
         lunch_start_seconds: payload.lunchStartSeconds,
@@ -289,7 +292,25 @@ export class CloudSyncService {
         dark_theme_enabled: payload.darkThemeEnabled,
         lunch_style_enabled: payload.lunchStyleEnabled,
         updated_at: new Date().toISOString(),
-      });
+      };
+
+    const withCitrix: any = {
+      ...baseRow,
+      citrix_capture_regions: payload.citrixCaptureRegions ?? null,
+      citrix_capture_screen: payload.citrixCaptureScreenIndex ?? null,
+    };
+
+    try {
+      // Prefer saving Citrix config too. If the DB doesn't have the columns yet, fall back.
+      let { error } = await this.sb.supabase.from('settings').upsert(withCitrix);
+
+      if (error) {
+        const msg = String((error as any)?.message || '').toLowerCase();
+        const missingColumn = msg.includes('column') && (msg.includes('citrix_capture_regions') || msg.includes('citrix_capture_screen')) && msg.includes('does not exist');
+        if (missingColumn) {
+          ({ error } = await this.sb.supabase.from('settings').upsert(baseRow));
+        }
+      }
 
       if (error) {
         console.error('[CloudSync] Failed to upsert settings:', error);

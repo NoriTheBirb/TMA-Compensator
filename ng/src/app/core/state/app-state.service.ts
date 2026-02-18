@@ -4,7 +4,7 @@ import type { LegacyTransaction } from '../models/transaction';
 import type { ActiveFlowTimerPersisted, PausedWorkEntry, PausedWorkStore } from '../models/paused-work';
 import type { AnalyticsState } from '../models/analytics';
 import { DEFAULT_ACCOUNT_CATALOG } from '../config/account-catalog';
-import { StorageService } from '../storage/storage.service';
+import { StorageService, type CitrixCaptureRegions } from '../storage/storage.service';
 import {
   durationToHHMM,
   formatSignedTime,
@@ -817,6 +817,32 @@ export class AppStateService {
     }
   }
 
+  setCitrixCaptureRegions(value: CitrixCaptureRegions | null): void {
+    this.storage.setCitrixCaptureRegions(value);
+
+    if (this.cloudEnabled()) {
+      void this.cloud!
+        .upsertSettingsFromState(this.exportSettingsForCloud())
+        .catch((e) => {
+          // eslint-disable-next-line no-console
+          console.warn('[AppState] cloud upsertSettingsFromState failed', e);
+        });
+    }
+  }
+
+  setCitrixCaptureScreenIndex(value: number | null): void {
+    this.storage.setCitrixCaptureScreenIndex(value);
+
+    if (this.cloudEnabled()) {
+      void this.cloud!
+        .upsertSettingsFromState(this.exportSettingsForCloud())
+        .catch((e) => {
+          // eslint-disable-next-line no-console
+          console.warn('[AppState] cloud upsertSettingsFromState failed', e);
+        });
+    }
+  }
+
   setDebugTimeFromInput(raw: string): void {
     const parsed = parseClockHHMMSSToSeconds(String(raw || ''));
     if (parsed === null) throw new Error('Formato inválido. Use HH:MM:SS ou HH:MM');
@@ -1138,6 +1164,8 @@ export class AppStateService {
     show_complexa: boolean;
     dark_theme_enabled: boolean;
     lunch_style_enabled: boolean;
+    citrix_capture_regions?: any | null;
+    citrix_capture_screen?: number | null;
   }): void {
     // Apply settings without re-upload loops (CloudSyncService gates uploads via isApplyingRemote).
     const shift = this.normalizeShiftStartSeconds(Number(row.shift_start_seconds));
@@ -1158,6 +1186,17 @@ export class AppStateService {
 
     this.lunchStyleEnabled.set(Boolean(row.lunch_style_enabled));
     this.applyBodyClasses();
+
+    // Citrix capture config (optional; only present if DB column exists).
+    if (row.citrix_capture_regions !== undefined) {
+      const regions = this.normalizeCitrixCaptureRegions(row.citrix_capture_regions);
+      this.storage.setCitrixCaptureRegions(regions);
+    }
+    if (row.citrix_capture_screen !== undefined) {
+      const n = Number(row.citrix_capture_screen);
+      const screen = Number.isFinite(n) && n >= 0 ? Math.floor(n) : null;
+      this.storage.setCitrixCaptureScreenIndex(screen);
+    }
 
     // Onboarding is only required if lunch/shift is missing.
     this.needsOnboarding.set(lunchStart === null || lunchEnd === null || !Number.isFinite(shift));
@@ -1384,6 +1423,8 @@ export class AppStateService {
     showComplexa: boolean;
     darkThemeEnabled: boolean;
     lunchStyleEnabled: boolean;
+    citrixCaptureRegions: CitrixCaptureRegions | null;
+    citrixCaptureScreenIndex: number | null;
   } {
     return {
       shiftStartSeconds: Math.max(0, Math.floor(Number(this.shiftStartSeconds()) || 0)),
@@ -1392,7 +1433,32 @@ export class AppStateService {
       showComplexa: Boolean(this.showComplexa()),
       darkThemeEnabled: Boolean(this.darkThemeEnabled()),
       lunchStyleEnabled: Boolean(this.lunchStyleEnabled()),
+      citrixCaptureRegions: this.storage.getCitrixCaptureRegionsOrNull(),
+      citrixCaptureScreenIndex: this.storage.getCitrixCaptureScreenIndexOrNull(),
     };
+  }
+
+  private normalizeCitrixCaptureRegions(raw: unknown): CitrixCaptureRegions | null {
+    const src = raw && typeof raw === 'object' ? (raw as any) : null;
+    const sgss = src?.sgss;
+    const tipoEmpresa = src?.tipoEmpresa;
+    if (!sgss || !tipoEmpresa) return null;
+
+    const norm = (r: any): { x: number; y: number; w: number; h: number } | null => {
+      const x = Number(r?.x);
+      const y = Number(r?.y);
+      const w = Number(r?.w);
+      const h = Number(r?.h);
+      if (![x, y, w, h].every(Number.isFinite)) return null;
+      if (w <= 0 || h <= 0) return null;
+      const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+      return { x: clamp01(x), y: clamp01(y), w: clamp01(w), h: clamp01(h) };
+    };
+
+    const a = norm(sgss);
+    const b = norm(tipoEmpresa);
+    if (!a || !b) return null;
+    return { sgss: a, tipoEmpresa: b };
   }
 
   private persist(): void {

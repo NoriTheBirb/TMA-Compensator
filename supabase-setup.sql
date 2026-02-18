@@ -366,9 +366,15 @@ CREATE TABLE IF NOT EXISTS public.settings (
   show_complexa BOOLEAN NOT NULL DEFAULT false,
   dark_theme_enabled BOOLEAN NOT NULL DEFAULT false,
   lunch_style_enabled BOOLEAN NOT NULL DEFAULT true,
+  citrix_capture_regions JSONB,
+  citrix_capture_screen INTEGER,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT settings_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE
 );
+
+-- Safe to re-run on older DBs:
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS citrix_capture_regions JSONB;
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS citrix_capture_screen INTEGER;
 
 -- =====================================================
 -- GLOBAL APP CONFIG (Sprint Mode)
@@ -483,6 +489,19 @@ BEGIN
       AND tablename = 'user_presence'
   ) THEN
     ALTER PUBLICATION supabase_realtime ADD TABLE public.user_presence;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime'
+      AND schemaname = 'public'
+      AND tablename = 'settings'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.settings;
   END IF;
 END $$;
 

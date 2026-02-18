@@ -3,6 +3,7 @@ import { Component, ElementRef, ViewChild, computed, signal } from '@angular/cor
 import { RouterLink } from '@angular/router';
 
 import { CitrixHelperService, type CitrixDisplayInfo, type Region01 } from '../../core/services/citrix-helper.service';
+import { AppStateService } from '../../core/state/app-state.service';
 import { StorageService } from '../../core/storage/storage.service';
 
 type Step = 'intro' | 'pick-sgss' | 'pick-tipo' | 'test';
@@ -61,6 +62,7 @@ export class CaptureSetupPage {
   constructor(
     private readonly helper: CitrixHelperService,
     private readonly storage: StorageService,
+    private readonly state: AppStateService,
   ) {
     const prev = this.storage.getCitrixCaptureRegionsOrNull();
     if (prev) this.regions.set(prev);
@@ -94,7 +96,7 @@ export class CaptureSetupPage {
   protected setScreenIndex(v: any): void {
     const n = Math.max(0, Math.floor(Number(v) || 0));
     this.selectedScreenIndex.set(n);
-    this.storage.setCitrixCaptureScreenIndex(n);
+    this.state.setCitrixCaptureScreenIndex(n);
   }
 
   protected async captureNow(): Promise<void> {
@@ -127,7 +129,7 @@ export class CaptureSetupPage {
 
   protected clearRegions(): void {
     this.regions.set(null);
-    this.storage.setCitrixCaptureRegions(null);
+    this.state.setCitrixCaptureRegions(null);
   }
 
   protected startPickSgss(): void {
@@ -223,7 +225,7 @@ export class CaptureSetupPage {
         tipoEmpresa: existing?.tipoEmpresa ?? { x: 0, y: 0, w: 0.001, h: 0.001 },
       };
       this.regions.set(next);
-      this.storage.setCitrixCaptureRegions(next);
+      this.state.setCitrixCaptureRegions(next);
       this.step.set('pick-tipo');
       this.draftRegion.set(null);
       return;
@@ -235,7 +237,7 @@ export class CaptureSetupPage {
         tipoEmpresa: r,
       };
       this.regions.set(next);
-      this.storage.setCitrixCaptureRegions(next);
+      this.state.setCitrixCaptureRegions(next);
       this.step.set('test');
       this.draftRegion.set(null);
     }
