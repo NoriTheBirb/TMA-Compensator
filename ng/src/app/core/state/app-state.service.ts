@@ -1222,7 +1222,10 @@ export class AppStateService {
 
     this.touchRegisteredNow();
 
-    const isTimeTracker = String((tx as any)?.type || '') === TIME_TRACKER_TYPE;
+    const typeRaw = String((tx as any)?.type || '').trim();
+    const typeNorm = typeRaw.toLowerCase();
+
+    const isTimeTracker = typeNorm === TIME_TRACKER_TYPE;
     const rawDifference = (Number(tx.timeSpent) || 0) - (Number(tx.tma) || 0);
     const difference = isTimeTracker ? 0 : rawDifference;
     const creditedMinutes = isTimeTracker ? 0 : Math.round(Math.abs(difference) / 60);
@@ -1231,8 +1234,7 @@ export class AppStateService {
 
     const dayKey = saoPauloDayKey(createdAtIso);
 
-    const type = String((tx as any)?.type || '');
-    const isAccount = type === 'conferencia' || type === 'retorno';
+    const isAccount = typeNorm === 'conferencia' || typeNorm === 'retorno';
     const existingSgss = String((tx as any)?.sgss || '').trim();
     const existingTipo = String((tx as any)?.tipoEmpresa || '').trim();
     let sgss = existingSgss || undefined;
