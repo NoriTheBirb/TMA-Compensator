@@ -53,9 +53,9 @@ export class AppStateService {
   private readonly involuntaryIdleKey = this.actionKey(TIME_TRACKER_INVOLUNTARY_IDLE_ITEM, TIME_TRACKER_TYPE);
 
   // Citrix OCR (from localhost helper): keep last value briefly so Flow-mode finalize can attach it.
-  private pendingCitrixFields: { sgss?: string; tipoEmpresa?: string; capturedAtMs: number } | null = null;
+  private pendingCitrixFields: { sgss?: string; tipoEmpresa?: string; item?: string; capturedAtMs: number } | null = null;
 
-  setPendingCitrixFields(fields: { sgss?: string; tipoEmpresa?: string } | null): void {
+  setPendingCitrixFields(fields: { sgss?: string; tipoEmpresa?: string } | null, opts?: { item?: string }): void {
     if (!fields) {
       this.pendingCitrixFields = null;
       return;
@@ -63,9 +63,11 @@ export class AppStateService {
 
     const sgss = String(fields.sgss || '').trim();
     const tipoEmpresa = String(fields.tipoEmpresa || '').trim();
+    const item = String(opts?.item || '').trim();
     this.pendingCitrixFields = {
       sgss: sgss || undefined,
       tipoEmpresa: tipoEmpresa || undefined,
+      item: item || undefined,
       capturedAtMs: Date.now(),
     };
   }
@@ -1238,12 +1240,18 @@ export class AppStateService {
 
     if (isAccount && (!sgss || !tipoEmpresa) && this.pendingCitrixFields) {
       const ageMs = Date.now() - Number(this.pendingCitrixFields.capturedAtMs || 0);
-      if (Number.isFinite(ageMs) && ageMs >= 0 && ageMs <= 2 * 60 * 1000) {
-        sgss = sgss || this.pendingCitrixFields.sgss;
-        tipoEmpresa = tipoEmpresa || this.pendingCitrixFields.tipoEmpresa;
+      if (!(Number.isFinite(ageMs) && ageMs >= 0 && ageMs <= 2 * 60 * 1000)) {
+        // Expired: don't apply to anything.
+        this.pendingCitrixFields = null;
+      } else {
+        const pendingItem = String(this.pendingCitrixFields.item || '').trim();
+        const txItem = String((tx as any)?.item || '').trim();
+        // Only apply if it was captured for this specific account item (or if we don't know the item).
+        if (!pendingItem || !txItem || pendingItem === txItem) {
+          sgss = sgss || this.pendingCitrixFields.sgss;
+          tipoEmpresa = tipoEmpresa || this.pendingCitrixFields.tipoEmpresa;
+        }
       }
-      // One-shot: never apply to later actions.
-      this.pendingCitrixFields = null;
     }
 
     const nextTx: LegacyTransaction = {

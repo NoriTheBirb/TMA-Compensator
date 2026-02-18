@@ -455,6 +455,12 @@
 					<div class="tx-when" title="{{ whenText(t) }}">{{ txTimeRangeLabel(t) }}</div>
 				</div>
 
+				<div class="tx-citrix-inline" *ngIf="t.sgss || t.tipoEmpresa">
+					<span class="tx-citrix-field" *ngIf="t.sgss"><span class="tx-citrix-k">SGSS</span> <span class="tx-citrix-v">{{ t.sgss }}</span></span>
+					<span class="tx-citrix-sep" *ngIf="t.sgss && t.tipoEmpresa">•</span>
+					<span class="tx-citrix-field" *ngIf="t.tipoEmpresa"><span class="tx-citrix-k">Tipo</span> <span class="tx-citrix-v">{{ t.tipoEmpresa }}</span></span>
+				</div>
+
 				<div class="tx-sub">
 					<span class="tx-sub-k">Gasto</span>
 					<span class="tx-sub-v">{{ secondsToTime(t.timeSpent) }}</span>
@@ -463,9 +469,7 @@
 					<span *ngIf="!state.sprintModeEnabled()" class="tx-sub-v">{{ secondsToTime(t.tma) }}</span>
 				</div>
 
-				<div class="tx-chips" *ngIf="t.sgss || t.tipoEmpresa || t.source">
-					<span class="tx-chip" *ngIf="t.sgss">SGSS: {{ t.sgss }}</span>
-					<span class="tx-chip" *ngIf="t.tipoEmpresa">Tipo: {{ t.tipoEmpresa }}</span>
+				<div class="tx-chips" *ngIf="t.source">
 					<span class="tx-chip tx-chip--muted" *ngIf="t.source">{{ sourceLabel(t.source) }}</span>
 				</div>
 

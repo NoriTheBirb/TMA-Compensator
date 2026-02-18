@@ -621,7 +621,7 @@ export class MainPage implements OnDestroy {
       const tipo = String(ex.tipoEmpresa || '').trim();
       this.citrixSgss.set(sgss);
       this.citrixTipoEmpresa.set(tipo);
-      this.state.setPendingCitrixFields({ sgss, tipoEmpresa: tipo });
+      this.state.setPendingCitrixFields({ sgss, tipoEmpresa: tipo }, { item: action.item });
 
       const text = [sgss, tipo].filter(Boolean).join('\n');
       if (text) {
@@ -676,7 +676,7 @@ export class MainPage implements OnDestroy {
       const tipo = String(ex.tipoEmpresa || '').trim();
       this.citrixSgss.set(sgss);
       this.citrixTipoEmpresa.set(tipo);
-      this.state.setPendingCitrixFields({ sgss, tipoEmpresa: tipo });
+      this.state.setPendingCitrixFields({ sgss, tipoEmpresa: tipo }, { item: action.item });
 
       const text = [sgss, tipo].filter(Boolean).join('\n');
       if (text) {
